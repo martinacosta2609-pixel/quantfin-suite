@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terminal Bonos Argentinos | BYMA & BCRA Market Data</title>
+  
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="/shared/nav_banner.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+
+    <!-- DESKTOP TOP APP BAR -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+        </div>
+        <div class="brand-text-block">
+          <div class="brand-title">Terminal Bonos Argentinos</div>
+          <div class="brand-subtitle">
+            <span class="live-dot"></span>
+            BYMA OFICIAL &bull; BCRA API v4.0 &bull; MOTOR FINANCIERO
+          </div>
+        </div>
+      </div>
+
+      <!-- Macro Indicators HUD -->
+      <div class="macro-hud" id="macroHud">
+        <div class="hud-item">
+          <span class="hud-label">OFICIAL</span>
+          <span class="hud-value" id="hudOficial">$ -</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">DÓLAR MEP</span>
+          <span class="hud-value highlight" id="hudMep">$ -</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">DÓLAR CCL</span>
+          <span class="hud-value" id="hudCcl">$ -</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">BRECHA</span>
+          <span class="hud-value" id="hudBrecha">-%</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">BADLAR</span>
+          <span class="hud-value" id="hudBadlar">-%</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">CER</span>
+          <span class="hud-value" id="hudCer">-</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">INFLACIÓN M.</span>
+          <span class="hud-value" id="hudInf">-%</span>
+        </div>
+      </div>
+
+      <!-- Header Controls -->
+      <div class="header-controls">
+        <button class="btn btn-secondary" id="btnExport" title="Exportar cotizaciones a CSV">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          CSV
+        </button>
+        <button class="btn btn-primary" id="btnRefresh" title="Actualizar datos del mercado">
+          <svg class="spin-icon" id="spinIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          <span id="refreshTimer">30s</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- SEARCH, FILTER CHIPS & VIEW SWITCHER TOOLBAR -->
+    <div class="app-toolbar">
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="searchInput" placeholder="Buscar AL30, GD35, Bopreal, CER...">
+        <button id="clearSearch" class="btn-clear" style="display: none;">&times;</button>
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div class="category-tabs" id="filterTabs">
+        <button class="cat-tab active" data-filter="sovereign">⭐ Soberanos</button>
+        <button class="cat-tab" data-filter="usd">💵 Dólares D</button>
+        <button class="cat-tab" data-filter="bopreal">🏦 Bopreales</button>
+        <button class="cat-tab" data-filter="cer">📈 Boncer CER</button>
+        <button class="cat-tab" data-filter="lecap">📜 Lecaps</button>
+        <button class="cat-tab" data-filter="all">🌐 Todos (<span id="totalBondsCount">0</span>)</button>
+      </div>
+
+      <!-- Main Desktop View Switcher -->
+      <div class="view-switcher">
+        <button class="view-btn active" id="btnViewTable" title="Vista Tabla de Cotizaciones">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="3" y1="15" x2="21" y2="15"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
+          </svg>
+          Cotizaciones
+        </button>
+        <button class="view-btn" id="btnViewVan" title="Calculadora de VAN con Tasa k">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="1" x2="12" y2="23"/>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+          Calculadora VAN (Tasa k)
+        </button>
+        <button class="view-btn" id="btnViewHorizon" title="Comparador por Horizonte de Inversión">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          Comparador a Plazo (TIR)
+        </button>
+        <button class="view-btn" id="btnViewCharts" title="Curvas y Dispersión">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3v18h18"/>
+            <path d="m19 9-5 5-4-4-3 3"/>
+          </svg>
+          Curvas
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN SCROLLABLE CONTENT -->
+    <main class="app-main" id="mainScroll">
+
+      <!-- 1. DESKTOP FINANCIAL TABLE VIEW -->
+      <div class="view-panel" id="tableView">
+        <div class="table-container">
+          <table class="financial-table" id="bondsTable">
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="symbol">TICKER <span class="sort-icon"></span></th>
+                <th class="sortable" data-sort="type">TIPO / LEY <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="price">PRECIO <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="change_pct">VAR % <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="vt">VALOR TÉCNICO <span class="sort-icon"></span></th>
+                <th class="sortable center" data-sort="parity">PARIDAD (%) <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="tir">TIR / YTM (%) <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="duration">DURATION <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="mod_duration">MD (AÑOS) <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="volume_amount">VOLUMEN <span class="sort-icon"></span></th>
+                <th class="sortable center" data-sort="maturity_date">VTO <span class="sort-icon"></span></th>
+                <th class="center">ACCIONES</th>
+              </tr>
+            </thead>
+            <tbody id="bondsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2. VALUACIÓN POR VAN (TASA k) VIEW -->
+      <div class="view-panel" id="vanView" style="display: none;">
+        <div class="van-container">
+          
+          <!-- Top Configuration Panel -->
+          <div class="terminal-card van-config-card">
+            <div class="terminal-card-header">
+              <div class="card-title-group">
+                <span class="card-badge badge-cyan">VALUACIÓN DCF</span>
+                <h2 class="card-title">Calculadora de Valor Actual Neto (VAN) & Costo de Capital (k)</h2>
+              </div>
+              <p class="card-subtitle">
+                Evalúa si el precio de mercado de un bono, letra u ON te remunera adecuadamente el riesgo asumido exigiendo tu propia tasa de descuento <strong>k</strong>.
+              </p>
+            </div>
+
+            <div class="van-controls-grid">
+              <!-- Bond Selector -->
+              <div class="van-field">
+                <label for="vanBondSelect">Instrumento a Valuar:</label>
+                <select id="vanBondSelect" class="terminal-select"></select>
+              </div>
+
+              <!-- Investment Amount -->
+              <div class="van-field">
+                <label for="vanInvestmentInput">Monto a Invertir (USD / ARS):</label>
+                <div class="input-with-prefix">
+                  <span class="prefix">$</span>
+                  <input type="number" id="vanInvestmentInput" class="terminal-input" value="1000" min="10" step="50">
+                </div>
+              </div>
+
+              <!-- Required Rate of Return (k) -->
+              <div class="van-field rate-field">
+                <div class="rate-label-row">
+                  <label for="vanKInput">Tasa de Costo de Capital Exigida (k):</label>
+                  <span class="rate-display"><strong id="vanKDisplay">12.00%</strong> anual</span>
+                </div>
+                <div class="rate-slider-row">
+                  <input type="range" id="vanKSlider" min="2.0" max="35.0" step="0.25" value="12.0">
+                  <input type="number" id="vanKInput" class="terminal-input rate-number" value="12.0" step="0.1" min="1" max="100">
+                </div>
+                <div class="preset-chips">
+                  <span class="preset-label">Presets k:</span>
+                  <button class="preset-btn" data-k="8.0">8% (ON Grado Inv.)</button>
+                  <button class="preset-btn" data-k="10.0">10% (Bopreal/Prov)</button>
+                  <button class="preset-btn active" data-k="12.0">12% (Soberano Base)</button>
+                  <button class="preset-btn" data-k="15.0">15% (Riesgo Alto)</button>
+                  <button class="preset-btn" data-k="18.0">18% (Distressed)</button>
+                </div>
+              </div>
+              <!-- Capital Recovery at Maturity Option -->
+              <div class="van-terminal-option-row">
+                <label class="toggle-checkbox-label" for="vanIncludeVT">
+                  <input type="checkbox" id="vanIncludeVT" checked>
+                  <span class="toggle-custom-box"></span>
+                  <span class="toggle-text">
+                    <strong>Recuperar Inversión / Valor Técnico al Vencimiento (VT):</strong>
+                    Añade al último dividendo la devolución del Valor Técnico (VT) del bono al término del período.
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Key Results Banner -->
+            <div class="van-results-banner">
+              <div class="van-kpi-grid">
+                <div class="van-kpi-card">
+                  <span class="kpi-label">INVERSIÓN INICIAL</span>
+                  <span class="kpi-value" id="kpiInvestment">$ 1,000.00</span>
+                  <span class="kpi-sub" id="kpiNominals">Nominales: -</span>
+                </div>
+
+                <div class="van-kpi-card">
+                  <span class="kpi-label">VALOR PRESENTE (VP) FLUJOS</span>
+                  <span class="kpi-value highlight-cyan" id="kpiPV">$ -</span>
+                  <span class="kpi-sub">Descontado a tasa k</span>
+                </div>
+
+                <div class="van-kpi-card van-featured">
+                  <span class="kpi-label">VAN (VALOR ACTUAL NETO)</span>
+                  <span class="kpi-value" id="kpiVAN">$ -</span>
+                  <span class="kpi-sub" id="kpiVanPct">Rentabilidad neta: -%</span>
+                </div>
+
+                <div class="van-kpi-card">
+                  <span class="kpi-label">PRECIO TEÓRICO vs MERCADO</span>
+                  <span class="kpi-value" id="kpiPrices">- vs -</span>
+                  <span class="kpi-sub" id="kpiMargin">Margen: -%</span>
+                </div>
+
+                <div class="van-kpi-card">
+                  <span class="kpi-label">TIR MERCADO vs TASA k</span>
+                  <span class="kpi-value" id="kpiYields">- vs -</span>
+                  <span class="kpi-sub" id="kpiSpread">Spread: - bps</span>
+                </div>
+              </div>
+
+              <!-- Verdict Banner -->
+              <div class="van-verdict-box" id="vanVerdictBox">
+                <div class="verdict-icon" id="verdictIcon">🟢</div>
+                <div class="verdict-content">
+                  <div class="verdict-title" id="verdictTitle">OPORTUNIDAD / SUBVALUADO (VAN Positivo)</div>
+                  <div class="verdict-desc" id="verdictDesc">
+                    A una tasa k del 12.0%, el valor presente de los flujos supera el costo de compra. El bono rinde más de lo exigido para su nivel de riesgo.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Grid: Cashflow DCF Schedule & Market-Wide Ranking -->
+          <div class="van-grid-split">
+            <!-- Left: Discounted Cash Flows Table -->
+            <div class="terminal-card">
+              <div class="terminal-card-header">
+                <h3 class="card-title">Desglose de Flujos Descontados paso a paso</h3>
+                <span class="badge-source">Fórmula: VP = CF / (1 + k/2)^(2*t)</span>
+              </div>
+              <div class="table-container compact-wrap">
+                <table class="financial-table compact-table">
+                  <thead>
+                    <tr>
+                      <th>FECHA</th>
+                      <th class="right">CUPÓN</th>
+                      <th class="right">AMORT</th>
+                      <th class="right">RESCATE VT</th>
+                      <th class="right">TOTAL CF</th>
+                      <th class="right">AÑOS (t)</th>
+                      <th class="right">FACTOR (DF)</th>
+                      <th class="right">VP FLUJO</th>
+                      <th class="right">VP ACUMULADO</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vanCashflowsBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Right: Market-Wide Ranking for same rate k -->
+            <div class="terminal-card">
+              <div class="terminal-card-header">
+                <h3 class="card-title">Ranking de Mercado: Bonos con mayor VAN para k = <span id="vanKRankingLabel">12%</span></h3>
+                <span class="badge-source">Base $1.000 invertidos</span>
+              </div>
+              <div class="table-container compact-wrap">
+                <table class="financial-table compact-table">
+                  <thead>
+                    <tr>
+                      <th>TICKER</th>
+                      <th class="right">PRECIO</th>
+                      <th class="right">P. TEÓRICO</th>
+                      <th class="right">TIR (%)</th>
+                      <th class="right">VAN ($1.000)</th>
+                      <th class="center">VEREDICTO</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vanMarketRankingBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 3. COMPARADOR POR HORIZONTE DE INVERSIÓN (TIR A PLAZO) VIEW -->
+      <div class="view-panel" id="horizonView" style="display: none;">
+        <div class="horizon-container">
+
+          <!-- Horizon Config Card -->
+          <div class="terminal-card horizon-config-card">
+            <div class="terminal-card-header">
+              <div class="card-title-group">
+                <span class="card-badge badge-amber">HORIZONTE TEMPORAL</span>
+                <h2 class="card-title">Comparador por Horizonte de Inversión & TIR a Plazo Fijo</h2>
+              </div>
+              <p class="card-subtitle">
+                Define cuánto tiempo piensas mantener los bonos en cartera. <strong>Los bonos que vencen antes son automáticamente excluidos</strong> para que compares exactamente qué bono maximiza tu ganancia hasta la fecha objetivo.
+              </p>
+            </div>
+
+            <!-- Horizon Controls -->
+            <div class="horizon-controls-bar">
+              <div class="horizon-quick-presets">
+                <span class="preset-label">Seleccionar Plazo:</span>
+                <button class="horizon-preset-btn" data-years="1.0">1 Año (2027)</button>
+                <button class="horizon-preset-btn" data-years="2.0">2 Años (2028)</button>
+                <button class="horizon-preset-btn" data-years="3.0">3 Años (2029)</button>
+                <button class="horizon-preset-btn" data-years="4.0">4 Años (2030)</button>
+                <button class="horizon-preset-btn active" data-years="5.0">⭐ 5 Años (2031)</button>
+                <button class="horizon-preset-btn" data-years="7.0">7 Años (2033)</button>
+                <button class="horizon-preset-btn" data-years="10.0">10 Años (2036)</button>
+              </div>
+
+              <div class="horizon-slider-box">
+                <label>Horizonte exacto: <strong id="horizonYearsDisplay">5.0 años</strong> (<span id="horizonTargetDateDisplay">Octubre 2031</span>)</label>
+                <input type="range" id="horizonSlider" min="1.0" max="12.0" step="0.5" value="5.0">
+              </div>
+
+              <div class="horizon-filter-pill">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                </svg>
+                <span>Filtro activo: Solo bonos con vencimiento &ge; <strong id="horizonFilterYear">2031</strong></span>
+              </div>
+            </div>
+
+            <!-- Winner Showcase Card -->
+            <div class="horizon-winner-card" id="horizonWinnerCard">
+              <div class="winner-trophy">🏆</div>
+              <div class="winner-details">
+                <div class="winner-header">
+                  <span class="winner-badge">MEJOR BONO PARA EL HORIZONTE</span>
+                  <span class="winner-ticker" id="winnerTicker">GD35</span>
+                  <span class="winner-name" id="winnerName">Global 2035 (Ley NY)</span>
+                </div>
+                <div class="winner-stats-row">
+                  <div class="w-stat">
+                    <span class="w-stat-label">TIR ANUALIZADA AL HORIZONTE</span>
+                    <span class="w-stat-value highlight-cyan" id="winnerTir">12.91%</span>
+                  </div>
+                  <div class="w-stat">
+                    <span class="w-stat-label">EFECTIVO COBRADO EN EL PLAZO</span>
+                    <span class="w-stat-value" id="winnerCash">$ 39.92</span>
+                    <span class="w-stat-sub">Por cada 100 nominales</span>
+                  </div>
+                  <div class="w-stat">
+                    <span class="w-stat-label">VALOR TERMINAL AL HORIZONTE</span>
+                    <span class="w-stat-value" id="winnerTerminal">$ 69.01</span>
+                    <span class="w-stat-sub">Venta proyectada en 2031</span>
+                  </div>
+                  <div class="w-stat">
+                    <span class="w-stat-label">RETORNO TOTAL ACUMULADO</span>
+                    <span class="w-stat-value highlight" id="winnerHpr">+72.9%</span>
+                    <span class="w-stat-sub">Ganancia global en 5 años</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Horizon Results Grid (Table + Chart) -->
+          <div class="horizon-results-grid">
+            <!-- Left: Ranking Table -->
+            <div class="terminal-card">
+              <div class="terminal-card-header">
+                <h3 class="card-title">Ranking Comparativo: Bonos elegibles para mantener hasta <span id="horizonTableYearTitle">2031</span></h3>
+                <span class="badge-source" id="horizonEligibleCount">6 bonos elegibles</span>
+              </div>
+              <div class="table-container">
+                <table class="financial-table">
+                  <thead>
+                    <tr>
+                      <th class="center">#</th>
+                      <th>TICKER</th>
+                      <th>TIPO / LEY</th>
+                      <th class="right">PRECIO COMPRA</th>
+                      <th class="center">VTO FINAL</th>
+                      <th class="right">AÑOS VTO</th>
+                      <th class="right">EFECTIVO COBRADO</th>
+                      <th class="right">PRECIO SALIDA</th>
+                      <th class="right">RETORNO ACUM.</th>
+                      <th class="right highlight-col">TIR AL HORIZONTE</th>
+                      <th class="center">ACCIÓN</th>
+                    </tr>
+                  </thead>
+                  <tbody id="horizonRankingBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Right: Visual Comparison Chart -->
+            <div class="terminal-card">
+              <div class="terminal-card-header">
+                <h3 class="card-title">Comparativa de Retorno Anualizado (TIR) a Plazo</h3>
+                <span class="badge-source">TIR Anualizada Efectiva (%)</span>
+              </div>
+              <div class="chart-wrapper" style="min-height: 380px;">
+                <canvas id="horizonChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 4. CHARTS VIEW -->
+      <div class="view-panel" id="chartsView" style="display: none;">
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">Curva Soberana: TIR vs Duration Modificada</div>
+              <div class="chart-desc">Estructura temporal Bonares (Arg) vs Globales (NY)</div>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="curveChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">Dispersión de Paridad vs Duration</div>
+              <div class="chart-desc">Nivel de paridad (%) según madurez en años</div>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="parityChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="emptyState" style="display: none;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <p>No se encontraron instrumentos para el filtro actual.</p>
+      </div>
+    </main>
+
+    <!-- DESKTOP FOOTER STATUS BAR -->
+    <footer class="app-footer">
+      <div class="footer-left">
+        <span class="badge-source">BYMA DATA OFICIAL</span>
+        <span class="badge-source">BCRA API v4.0</span>
+        <span class="footer-stat">Instrumentos: <strong id="statCount">0</strong></span>
+        <span class="footer-stat">Actualizado: <strong id="statTime">--:--:--</strong></span>
+      </div>
+      <div class="footer-right">
+        <span>Convención 30/360 &bull; TIR Semestral SciPy Brentq &bull; Valuación DCF &bull; Análisis de Horizonte Temporal</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- DESKTOP BOND INSPECTOR & WHAT-IF MODAL -->
+  <div class="modal-backdrop" id="bondModal" style="display: none;">
+    <div class="desktop-modal">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title-row">
+            <span class="modal-ticker" id="modalTicker">AL30</span>
+            <span class="badge-type" id="modalType">Soberano USD</span>
+            <span class="modal-law" id="modalLaw">Ley Argentina</span>
+          </div>
+          <div class="modal-subtitle" id="modalName">Bonar 2030 (Ley Arg)</div>
+        </div>
+        <button class="modal-close" id="btnModalClose">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Key Metrics Cards -->
+        <div class="modal-stats-grid">
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">PRECIO MERCADO</div>
+            <div class="modal-stat-value" id="modalPrice">-</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">VALOR TÉCNICO (VT)</div>
+            <div class="modal-stat-value" id="modalVT">-</div>
+            <div class="modal-stat-sub" id="modalVR">VR: - | IC: -</div>
+          </div>
+          <div class="modal-stat-box highlight">
+            <div class="modal-stat-label">PARIDAD</div>
+            <div class="modal-stat-value" id="modalParity">-%</div>
+          </div>
+          <div class="modal-stat-box highlight-cyan">
+            <div class="modal-stat-label">TIR ANUAL (YTM)</div>
+            <div class="modal-stat-value" id="modalTIR">-%</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">DURATION (MACAULAY)</div>
+            <div class="modal-stat-value" id="modalDuration">- a</div>
+          </div>
+          <div class="modal-stat-box">
+            <div class="modal-stat-label">DURATION MODIFICADA</div>
+            <div class="modal-stat-value" id="modalMD">- a</div>
+          </div>
+        </div>
+
+        <!-- QUICK MODAL VAN EVALUATION -->
+        <div class="modal-van-box">
+          <div class="sim-header">
+            <span class="sim-title">💰 Valuación Rápida de VAN para este Bono</span>
+            <span class="sim-sub">Define tu tasa k pretendida y monto a invertir</span>
+          </div>
+          <div class="modal-van-controls">
+            <div class="sim-control-group">
+              <label>Inversión: <strong>$</strong></label>
+              <input type="number" id="modalVanInvest" class="terminal-input" value="1000" style="width: 100px;">
+            </div>
+            <div class="sim-control-group" style="flex: 1;">
+              <label>Tasa k exigida: <strong id="modalVanKVal">12.0%</strong></label>
+              <input type="range" id="modalVanKSlider" min="2.0" max="35.0" step="0.5" value="12.0">
+            </div>
+            <div class="modal-van-result-badge" id="modalVanResultBadge">
+              <span>VAN: <strong id="modalVanAmt">$ 0.00</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- WHAT-IF SIMULATOR -->
+        <div class="simulator-box">
+          <div class="sim-header">
+            <span class="sim-title">⚡ Simulador Sensibilidad What-If</span>
+            <span class="sim-sub">Impacto de variación de TIR en precio y paridad</span>
+          </div>
+          <div class="sim-controls">
+            <div class="sim-control-group">
+              <label>Variación de TIR (bps): <strong id="simBpsVal">0 bps</strong></label>
+              <input type="range" id="simBpsSlider" min="-1000" max="1000" step="25" value="0">
+            </div>
+            <div class="sim-results">
+              <div class="sim-res-item">
+                <span>Precio Proyectado:</span>
+                <strong id="simEstPrice">-</strong>
+              </div>
+              <div class="sim-res-item">
+                <span>Nueva Paridad:</span>
+                <strong id="simEstParity">-%</strong>
+              </div>
+              <div class="sim-res-item">
+                <span>Impacto en Capital:</span>
+                <strong id="simImpactPct">0.00%</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CASHFLOW SCHEDULE TABLE -->
+        <div class="modal-section-title">Cronograma Oficial de Cobro de Flujos (Cashflows)</div>
+        <div class="cashflows-table-wrap">
+          <table class="cashflows-table">
+            <thead>
+              <tr>
+                <th>FECHA COBRO</th>
+                <th class="right">CUPÓN</th>
+                <th class="right">AMORT</th>
+                <th class="right">TOTAL</th>
+                <th class="right">VR RESTANTE</th>
+                <th class="right">AÑOS</th>
+              </tr>
+            </thead>
+            <tbody id="cashflowsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

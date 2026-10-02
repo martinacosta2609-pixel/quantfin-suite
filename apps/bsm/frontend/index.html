@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QUANT BSM - Terminal Econométrico de Commodities y Opciones</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/shared/nav_banner.js"></script>
+    <script src="chart.min.js"></script>
+</head>
+<body class="bg-dark text-slate-100 antialiased font-sans">
+    <!-- BARRA SUPERIOR INSTITUCIONAL -->
+    <header class="app-header">
+        <div class="header-left">
+            <div class="logo-badge">
+                <span class="logo-symbol">Ω</span>
+            </div>
+            <div>
+                <h1 class="app-title">QUANT BSM TERMINAL</h1>
+                <p class="app-subtitle">Valoración Black-Scholes / Black-76 & Validación Econométrica de Opciones sobre Commodities</p>
+            </div>
+        </div>
+
+        <div class="header-center">
+            <!-- Ticker rapido de mercados -->
+            <div class="market-pill">
+                <span class="pulse-indicator"></span>
+                <span class="font-semibold text-emerald-400">FEEDS OFICIALES:</span>
+                <span class="text-slate-300">CME • NYMEX • ICE • EURONEXT</span>
+            </div>
+            <div class="rate-pill">
+                <span class="text-slate-400">Tasa Libre Riesgo (13W T-Bill):</span>
+                <span id="headerRiskFreeRate" class="font-mono text-cyan-400 font-bold">4.02%</span>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <!-- Selector de Pestañas Principales -->
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="tab-live">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    Terminal en Vivo
+                </button>
+                <button class="nav-tab" data-tab="tab-econometrics">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                    Validador Econométrico
+                </button>
+                <button class="nav-tab" data-tab="tab-calculator">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+                    Calculadora What-If
+                </button>
+                <button class="nav-tab" data-tab="tab-theory">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+                    Modelos & Fórmulas
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- CINTA DE COMMODITIES RAPIDOS -->
+    <section class="commodity-strip" id="commodityStrip">
+        <!-- Renderizado dinamicamente por JS -->
+    </section>
+
+    <!-- CONTENEDOR PRINCIPAL -->
+    <main class="main-container">
+
+        <!-- ==================== TAB 1: TERMINAL EN VIVO ==================== -->
+        <div id="tab-live" class="tab-pane active">
+            <!-- Barra de Control del Commodity Activo -->
+            <div class="grid-layout-live">
+                <!-- PANEL IZQUIERDO: Cotizacion y Estimaciones de Volatilidad -->
+                <div class="card p-4 panel-quote">
+                    <div class="card-header">
+                        <div>
+                            <span id="activeCommExchange" class="badge-exchange">CME / COMEX (USA)</span>
+                            <h2 id="activeCommName" class="text-xl font-bold text-white mt-1">Oro (Gold) COMEX</h2>
+                            <span id="activeCommTicker" class="text-xs font-mono text-slate-400">GC=F / ETF Opciones: GLD</span>
+                        </div>
+                        <div class="text-right">
+                            <div id="activeCommPrice" class="text-3xl font-mono font-bold text-white">$2,654.20</div>
+                            <div id="activeCommChange" class="text-sm font-mono text-emerald-400 font-semibold">+12.40 (+0.47%)</div>
+                        </div>
+                    </div>
+
+                    <div class="quote-stats-grid mt-4">
+                        <div class="stat-box">
+                            <span class="stat-label">Rango Diario (H/L)</span>
+                            <span id="activeCommHighLow" class="stat-val font-mono">$2,641.50 - $2,662.80</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Volumen Contratos</span>
+                            <span id="activeCommVolume" class="stat-val font-mono">148,290</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Unidad de Medida</span>
+                            <span id="activeCommUnit" class="stat-val font-mono">USD/oz troy</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Ultima Actualizacion</span>
+                            <span id="activeCommUpdated" class="stat-val text-xs text-slate-400 font-mono">En vivo</span>
+                        </div>
+                    </div>
+
+                    <!-- Volatilidades Econometricas del Activo -->
+                    <div class="mt-4 pt-3 border-t border-slate-800">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Estimadores de Volatilidad Histórica (60D Anualizada):</div>
+                        <div class="vol-estimators-grid">
+                            <div class="vol-estimator-card">
+                                <span class="text-xs text-slate-400">Garman-Klass (OHLC)</span>
+                                <span id="volGarmanKlass" class="text-lg font-mono font-bold text-amber-400">18.4%</span>
+                                <span class="text-[10px] text-slate-500">8x mas eficiente</span>
+                            </div>
+                            <div class="vol-estimator-card">
+                                <span class="text-xs text-slate-400">Parkinson (High-Low)</span>
+                                <span id="volParkinson" class="text-lg font-mono font-bold text-cyan-400">18.1%</span>
+                                <span class="text-[10px] text-slate-500">Rango intradiario</span>
+                            </div>
+                            <div class="vol-estimator-card">
+                                <span class="text-xs text-slate-400">Close-to-Close Realizada</span>
+                                <span id="volRealized" class="text-lg font-mono font-bold text-slate-300">18.9%</span>
+                                <span class="text-[10px] text-slate-500">Desvio estandar</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mini Grafico del Activo -->
+                    <div class="mt-4">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-semibold text-slate-400">Serie de Precios Histórica (1 Año):</span>
+                            <button id="btnRefreshQuote" class="btn-xs btn-outline">Actualizar Feed</button>
+                        </div>
+                        <div class="chart-container-sm">
+                            <canvas id="chartUnderlyingHistory"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANEL DERECHO: Configurador de Opcion y Recomendacion Cuantitativa Central -->
+                <div class="card p-4 panel-valuation">
+                    <!-- Controles de Valoracion -->
+                    <div class="valuation-controls-bar">
+                        <div class="control-item">
+                            <label>Modelo de Valoración:</label>
+                            <select id="selectModel" class="form-select font-mono">
+                                <option value="black76" selected>Black-76 (Futuros Oficial CME/ICE)</option>
+                                <option value="bsm">Black-Scholes-Merton (Spot / ETFs)</option>
+                            </select>
+                        </div>
+
+                        <div class="control-item">
+                            <label>Tipo de Opción:</label>
+                            <div class="toggle-group">
+                                <button type="button" class="btn-toggle active" id="btnToggleCall" data-type="call">CALL (Compra)</button>
+                                <button type="button" class="btn-toggle" id="btnTogglePut" data-type="put">PUT (Venta)</button>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <label>Vencimiento:</label>
+                            <select id="selectExpiry" class="form-select font-mono">
+                                <!-- Llenado por JS -->
+                            </select>
+                        </div>
+
+                        <div class="control-item">
+                            <label>Precio de Ejercicio (Strike K):</label>
+                            <div class="input-with-stepper">
+                                <input type="number" id="inputStrike" class="form-input font-mono" step="0.5" value="2650">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TARJETA DE RECOMENDACION CUANTITATIVA CENTRAL (EL NUCLEO DEL PEDIDO) -->
+                    <div class="recommendation-hero-card mt-4" id="recommendationCard">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="rec-icon-badge" id="recBadgeIcon">▲</div>
+                                <div>
+                                    <div class="text-xs uppercase tracking-wider text-slate-400">DIAGNÓSTICO CUANTITATIVO DE INVERSIÓN:</div>
+                                    <div id="recActionTitle" class="text-2xl font-extrabold tracking-tight">ANALIZANDO MERCADO...</div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xs text-slate-400 block">Intensidad de Señal:</span>
+                                <span id="recSignalStrength" class="badge-signal">MODERADA</span>
+                            </div>
+                        </div>
+
+                        <!-- Metricas Clave de la Recomendacion -->
+                        <div class="rec-metrics-grid mt-4">
+                            <div class="rec-metric-item">
+                                <span class="label">Precio Teórico (Modelo):</span>
+                                <span id="recTheoreticalPrice" class="value font-mono text-cyan-400">$0.00</span>
+                            </div>
+                            <div class="rec-metric-item">
+                                <span class="label">Precio de Mercado (Prima):</span>
+                                <span id="recMarketPrice" class="value font-mono text-white">$0.00</span>
+                            </div>
+                            <div class="rec-metric-item">
+                                <span class="label">Edge Teórico (Mispricing):</span>
+                                <span id="recEdgePct" class="value font-mono font-bold">+0.00%</span>
+                            </div>
+                            <div class="rec-metric-item">
+                                <span class="label">Vol. Implícita (IV):</span>
+                                <span id="recIV" class="value font-mono text-amber-300">0.00%</span>
+                            </div>
+                            <div class="rec-metric-item">
+                                <span class="label">Prob. de Ganancia (PoP):</span>
+                                <span id="recPoP" class="value font-mono text-emerald-400">0.0%</span>
+                            </div>
+                            <div class="rec-metric-item">
+                                <span class="label">Punto de Equilibrio (Break-Even):</span>
+                                <span id="recBreakEven" class="value font-mono text-slate-200">$0.00</span>
+                            </div>
+                        </div>
+
+                        <!-- Razon Cuantitativa Institucional -->
+                        <div class="mt-4 pt-3 border-t border-slate-700/60">
+                            <div class="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Fundamento Cuantitativo:</div>
+                            <ul id="recRationaleList" class="rationale-list text-sm text-slate-200">
+                                <li>Evaluando condiciones de arbitraje y superficie de volatilidad...</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- GRIEGAS ANALITICAS COMPLETAS -->
+                    <div class="mt-4">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Griegas Analíticas de Sensibilidad:</div>
+                        <div class="greeks-grid">
+                            <div class="greek-card">
+                                <div class="greek-name">Delta (Δ)</div>
+                                <div id="greekDelta" class="greek-val font-mono text-emerald-400">+0.500</div>
+                                <div class="greek-desc">dPrecio / dSubyacente</div>
+                            </div>
+                            <div class="greek-card">
+                                <div class="greek-name">Gamma (Γ)</div>
+                                <div id="greekGamma" class="greek-val font-mono text-cyan-400">+0.0042</div>
+                                <div class="greek-desc">dΔ / dSubyacente</div>
+                            </div>
+                            <div class="greek-card">
+                                <div class="greek-name">Vega (𝒱)</div>
+                                <div id="greekVega" class="greek-val font-mono text-purple-400">$0.450</div>
+                                <div class="greek-desc">Por 1% de Volatilidad</div>
+                            </div>
+                            <div class="greek-card">
+                                <div class="greek-name">Theta (Θ)</div>
+                                <div id="greekTheta" class="greek-val font-mono text-rose-400">-$0.125</div>
+                                <div class="greek-desc">Decaimiento por Día</div>
+                            </div>
+                            <div class="greek-card">
+                                <div class="greek-name">Rho (ρ)</div>
+                                <div id="greekRho" class="greek-val font-mono text-amber-400">+$0.082</div>
+                                <div class="greek-desc">Por 1% Tasa de Interés</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GRAFICO DE PAYOFF INTERACTIVO -->
+                    <div class="mt-4">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-semibold text-slate-400">Perfil de Rendimiento (P&L Payoff al Vencimiento vs Hoy):</span>
+                            <span class="text-xs font-mono text-slate-500">P&L Neto = Intrinseco - Prima</span>
+                        </div>
+                        <div class="chart-container-md">
+                            <canvas id="chartPayoff"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABLA COMPLETA DE LA CADENA DE OPCIONES (CALLS Y PUTS EN TIEMPO REAL) -->
+            <div class="card p-4 mt-4">
+                <div class="flex justify-between items-center mb-3">
+                    <div>
+                        <h3 class="text-base font-bold text-white">Cadena Oficial de Opciones (Calls & Puts)</h3>
+                        <p class="text-xs text-slate-400">Comparación de precios de mercado vs valor teórico BSM/Black-76 y desvíos de prima</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="btn-sm btn-outline active" id="btnFilterAll">Todos</button>
+                        <button class="btn-sm btn-outline" id="btnFilterCalls">Solo Calls</button>
+                        <button class="btn-sm btn-outline" id="btnFilterPuts">Solo Puts</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="options-chain-table" id="optionsTable">
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Strike (K)</th>
+                                <th>Bid</th>
+                                <th>Ask</th>
+                                <th>Último (Mid)</th>
+                                <th>Teórico BSM</th>
+                                <th>Edge %</th>
+                                <th>Vol. Imp. (IV)</th>
+                                <th>Delta (Δ)</th>
+                                <th>Gamma (Γ)</th>
+                                <th>Theta (Θ)</th>
+                                <th>Volumen</th>
+                                <th>Open Int.</th>
+                                <th>Recomendación</th>
+                            </tr>
+                        </thead>
+                        <tbody id="optionsTableBody">
+                            <tr>
+                                <td colspan="14" class="text-center py-6 text-slate-500">Cargando cadena de opciones de mercado...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- ==================== TAB 2: VALIDADOR ECONOMETRICO & BACKTESTING ==================== -->
+        <div id="tab-econometrics" class="tab-pane">
+            <div class="card p-4">
+                <div class="card-header border-b border-slate-800 pb-3">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Validador Econométrico & Auditoría Histórica</h2>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Evalúe rigurosamente la ecuación Black-Scholes-Merton y Black-76 en una fecha pasada:
+                            el sistema estima el valor de la opción utilizando <strong>únicamente datos anteriores a esa fecha</strong>
+                            (sin sesgo de anticipación o <em>lookahead bias</em>) y compara el resultado con lo que efectivamente ocurrió en el mercado.
+                        </p>
+                    </div>
+                    <div class="badge-math">
+                        Test de Residuos: eₜ = Realizado - Estimado
+                    </div>
+                </div>
+
+                <!-- FORMULARIO DE CONTROL ECONOMETRICO -->
+                <div class="econometric-controls-grid mt-4">
+                    <div class="control-box">
+                        <label>Commodity a Testear:</label>
+                        <select id="econCommSelect" class="form-select font-mono">
+                            <!-- Llenado por JS -->
+                        </select>
+                    </div>
+
+                    <div class="control-box">
+                        <label>Fecha Pasada de Estimación (t₀):</label>
+                        <input type="date" id="econTargetDate" class="form-input font-mono" value="2026-03-01">
+                        <div class="quick-date-buttons mt-1">
+                            <button type="button" class="btn-xs btn-outline date-preset" data-days="30">-30d</button>
+                            <button type="button" class="btn-xs btn-outline date-preset" data-days="90">-90d</button>
+                            <button type="button" class="btn-xs btn-outline date-preset" data-days="180">-180d</button>
+                            <button type="button" class="btn-xs btn-outline date-preset" data-days="365">-1 año</button>
+                        </div>
+                    </div>
+
+                    <div class="control-box">
+                        <label>Tipo de Opción:</label>
+                        <select id="econOptionType" class="form-select font-mono">
+                            <option value="call" selected>CALL (Opción de Compra)</option>
+                            <option value="put">PUT (Opción de Venta)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-box">
+                        <label>Moneyness (K / S en t₀):</label>
+                        <select id="econMoneyness" class="form-select font-mono">
+                            <option value="0.90">En Dinero Profundo (ITM 10%, K=0.90*S)</option>
+                            <option value="0.95">En el Dinero (ITM 5%, K=0.95*S)</option>
+                            <option value="1.00" selected>En el Dinero Justo (ATM, K=1.00*S)</option>
+                            <option value="1.05">Fuera del Dinero (OTM 5%, K=1.05*S)</option>
+                            <option value="1.10">Fuera del Dinero Profundo (OTM 10%, K=1.10*S)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-box">
+                        <label>Horizonte a Vencimiento (T):</label>
+                        <select id="econHorizonDays" class="form-select font-mono">
+                            <option value="15">15 Días (Corto plazo)</option>
+                            <option value="30" selected>30 Días (Mensual estándar)</option>
+                            <option value="60">60 Días (Bimestral)</option>
+                            <option value="90">90 Días (Trimestral)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-box">
+                        <label>Ventana Muestral Previa (W):</label>
+                        <select id="econWindowDays" class="form-select font-mono">
+                            <option value="30">30 Días previos a t₀</option>
+                            <option value="60">60 Días previos a t₀</option>
+                            <option value="90" selected>90 Días previos a t₀</option>
+                            <option value="180">180 Días previos a t₀</option>
+                            <option value="252">252 Días (1 Año hábil previo)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-box">
+                        <label>Estimador Econométrico de σ:</label>
+                        <select id="econVolEstimator" class="form-select font-mono">
+                            <option value="garman_klass" selected>Garman-Klass (OHLC, Máxima Eficiencia)</option>
+                            <option value="parkinson">Parkinson (Rango High-Low)</option>
+                            <option value="realized">Close-to-Close Realizada Clásica</option>
+                        </select>
+                    </div>
+
+                    <div class="control-box">
+                        <label>Ecuación:</label>
+                        <select id="econModel" class="form-select font-mono">
+                            <option value="black76" selected>Black-76 (Futuros Oficial)</option>
+                            <option value="bsm">Black-Scholes-Merton (Carry)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex justify-end">
+                    <button id="btnRunEconTest" class="btn-primary flex items-center gap-2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        EJECUTAR VALIDACIÓN ECONOMÉTRICA HISTÓRICA
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESULTADOS DEL TEST ECONOMETRICO -->
+            <div id="econResultsSection" class="mt-4" style="display: none;">
+                <!-- AUDITORIA EN 2 PASOS -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- PASO 1: ESTIMACION EX-ANTE EN t0 -->
+                    <div class="card p-4 border-l-4 border-cyan-500">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs uppercase font-bold text-cyan-400 tracking-wider">PASO 1: ESTIMACIÓN EX-ANTE EN t₀</span>
+                            <span id="econAuditDateT0" class="font-mono text-xs text-slate-400">Fecha: 2026-03-01</span>
+                        </div>
+                        <p class="text-xs text-slate-300 mb-3">
+                            Información disponible <strong>exclusivamente antes de esa fecha</strong>:
+                        </p>
+                        <div class="grid grid-cols-2 gap-2 text-sm font-mono">
+                            <div class="bg-slate-900/60 p-2 rounded">
+                                <span class="text-xs text-slate-400 block">Precio Subyacente S(t₀):</span>
+                                <span id="econAuditPriceT0" class="text-white font-bold">$0.00</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2 rounded">
+                                <span class="text-xs text-slate-400 block">Strike Evaluado (K):</span>
+                                <span id="econAuditStrikeK" class="text-white font-bold">$0.00</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2 rounded">
+                                <span class="text-xs text-slate-400 block">Volatilidad Estimada (σ̂):</span>
+                                <span id="econAuditSigma" class="text-amber-400 font-bold">0.00%</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2 rounded">
+                                <span class="text-xs text-slate-400 block">Tasa Libre de Riesgo (r):</span>
+                                <span id="econAuditRate" class="text-cyan-400 font-bold">0.00%</span>
+                            </div>
+                        </div>
+                        <div class="mt-3 p-3 bg-cyan-950/40 border border-cyan-800/40 rounded-lg text-center">
+                            <span class="text-xs text-cyan-300 block uppercase font-semibold">Valor Teórico Estimado por la Ecuación:</span>
+                            <span id="econAuditTheoPrice" class="text-2xl font-mono font-extrabold text-cyan-400">$0.0000</span>
+                        </div>
+                    </div>
+
+                    <!-- PASO 2: REALIDAD EMPIRICA Y ERROR -->
+                    <div class="card p-4 border-l-4 border-purple-500">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs uppercase font-bold text-purple-400 tracking-wider">PASO 2: REALIDAD EMPÍRICA Y ERROR</span>
+                            <span class="font-mono text-xs text-slate-400">A Vencimiento (t₀ + T)</span>
+                        </div>
+                        <p class="text-xs text-slate-300 mb-3">
+                            Resultado observado en los datos reales del mercado:
+                        </p>
+                        <div class="grid grid-cols-2 gap-2 text-sm font-mono">
+                            <div class="bg-slate-900/60 p-2 rounded">
+                                <span class="text-xs text-slate-400 block">Precio Final Real S(T):</span>
+                                <span id="econAuditPriceST" class="text-white font-bold">$0.00</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2 rounded">
+                                <span class="text-xs text-slate-400 block">Payoff Terminal Real:</span>
+                                <span id="econAuditPayoffTerm" class="text-white font-bold">$0.00</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2 rounded">
+                                <span class="text-xs text-slate-400 block">Payoff Descontado a t₀:</span>
+                                <span id="econAuditDiscountedPayoff" class="text-emerald-400 font-bold">$0.00</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2 rounded">
+                                <span class="text-xs text-slate-400 block">Error Porcentual:</span>
+                                <span id="econAuditPctError" class="font-bold">0.00%</span>
+                            </div>
+                        </div>
+                        <div class="mt-3 p-3 bg-purple-950/40 border border-purple-800/40 rounded-lg text-center" id="boxPunctualError">
+                            <span class="text-xs text-purple-300 block uppercase font-semibold">Error Puntual de Estimación (Real - Teórico):</span>
+                            <span id="econAuditPunctualError" class="text-2xl font-mono font-extrabold text-purple-300">$0.0000</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BATERIA DE TESTS Y DIAGNOSTICOS ECONOMETRICOS -->
+                <div class="card p-4 mt-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <div>
+                            <h3 class="text-base font-bold text-white">Batería de Diagnóstico Econométrico de Residuos (Rolling Sample)</h3>
+                            <p class="text-xs text-slate-400">Evaluación estadística rigurosa de los errores de estimación eₜ a lo largo de la ventana histórica</p>
+                        </div>
+                        <span id="econSampleSizeBadge" class="badge-exchange">Muestra: 50 observaciones</span>
+                    </div>
+
+                    <div class="diagnostics-metrics-grid">
+                        <div class="diag-card">
+                            <div class="diag-title">RMSE (Root Mean Square Error)</div>
+                            <div id="diagRMSE" class="diag-val text-white font-mono">$0.00</div>
+                            <div class="diag-sub">Desviación cuadrática típica</div>
+                        </div>
+                        <div class="diag-card">
+                            <div class="diag-title">MAE (Mean Absolute Error)</div>
+                            <div id="diagMAE" class="diag-val text-cyan-400 font-mono">$0.00</div>
+                            <div class="diag-sub">Error medio en valor absoluto</div>
+                        </div>
+                        <div class="diag-card">
+                            <div class="diag-title">MAPE (%)</div>
+                            <div id="diagMAPE" class="diag-val text-amber-400 font-mono">0.00%</div>
+                            <div class="diag-sub">Error porcentual relativo</div>
+                        </div>
+                        <div class="diag-card">
+                            <div class="diag-title">Sesgo Sistemático (Mean Bias ē)</div>
+                            <div id="diagMeanBias" class="diag-val font-mono">0.00</div>
+                            <div id="diagBiasLabel" class="diag-sub text-xs">Sin sesgo estructural</div>
+                        </div>
+                        <div class="diag-card">
+                            <div class="diag-title">Test de Jarque-Bera (Normalidad)</div>
+                            <div id="diagJBStat" class="diag-val text-purple-400 font-mono">JB: 0.00</div>
+                            <div id="diagJBPval" class="diag-sub">p-valor: 0.0000</div>
+                        </div>
+                        <div class="diag-card">
+                            <div class="diag-title">Asimetría y Curtosis</div>
+                            <div id="diagSkewKurt" class="diag-val text-slate-200 font-mono">S: 0.0 | K: 3.0</div>
+                            <div class="diag-sub">Detección de Colas Pesadas</div>
+                        </div>
+                        <div class="diag-card">
+                            <div class="diag-title">Durbin-Watson (Autocorrelación)</div>
+                            <div id="diagDW" class="diag-val text-emerald-400 font-mono">DW: 2.00</div>
+                            <div id="diagDWStatus" class="diag-sub">Sin autocorrelación serial</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GRAFICOS DEL ANALISIS ECONOMETRICO -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                    <!-- GRAFICO 1: TRAYECTORIA DEL COMMODITY -->
+                    <div class="card p-4">
+                        <h4 class="text-sm font-bold text-white mb-1">Trayectoria Real del Commodity y Horizonte a Vencimiento</h4>
+                        <p class="text-xs text-slate-400 mb-2">Comportamiento del precio del activo desde t₀ hasta la expiración</p>
+                        <div class="chart-container-md">
+                            <canvas id="chartEconPath"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- GRAFICO 2: HISTOGRAMA DE RESIDUOS VS CAMPANA GAUSSIANA -->
+                    <div class="card p-4">
+                        <h4 class="text-sm font-bold text-white mb-1">Distribución de Residuos vs Campana Normal Teórica</h4>
+                        <p class="text-xs text-slate-400 mb-2">Demuestra si los errores del modelo presentan leptocurtosis (colas pesadas del mercado)</p>
+                        <div class="chart-container-md">
+                            <canvas id="chartEconHist"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GRAFICO 3: SERIE TEMPORAL DE VALORES TEORICOS VS REALIZADOS -->
+                <div class="card p-4 mt-4">
+                    <h4 class="text-sm font-bold text-white mb-1">Serie Temporal Histórica: Valor Teórico Estimado vs Payoff Realizado</h4>
+                    <p class="text-xs text-slate-400 mb-2">Evolución de las estimaciones en cada punto temporal del backtest</p>
+                    <div class="chart-container-md">
+                        <canvas id="chartEconSeries"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- ==================== TAB 3: CALCULADORA WHAT-IF ==================== -->
+        <div id="tab-calculator" class="tab-pane">
+            <div class="card p-4">
+                <div class="card-header border-b border-slate-800 pb-3">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Calculadora Cuántica Manual & Análisis de Sensibilidad</h2>
+                        <p class="text-xs text-slate-400 mt-1">Experimente interactivamente variando parámetros para observar el comportamiento dinámico de la prima y las griegas.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+                    <!-- Controles Manuales -->
+                    <div class="md:col-span-1 space-y-4">
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Precio Subyacente (S o F):</label>
+                            <input type="number" id="calcInputS" class="form-input font-mono" value="100.0" step="1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Precio de Ejercicio (Strike K):</label>
+                            <input type="number" id="calcInputK" class="form-input font-mono" value="100.0" step="1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Días al Vencimiento (T en días):</label>
+                            <input type="number" id="calcInputDays" class="form-input font-mono" value="30" step="1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Volatilidad Anualizada (σ %):</label>
+                            <input type="number" id="calcInputVol" class="form-input font-mono" value="20.0" step="0.5">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Tasa Libre de Riesgo (r %):</label>
+                            <input type="number" id="calcInputRate" class="form-input font-mono" value="4.0" step="0.1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Modelo Matemático:</label>
+                            <select id="calcInputModel" class="form-select font-mono">
+                                <option value="black76" selected>Black-76 (Futuros)</option>
+                                <option value="bsm">Black-Scholes-Merton</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Precio de Mercado Opcional (Para IV):</label>
+                            <input type="number" id="calcInputMkt" class="form-input font-mono" value="2.50" step="0.1">
+                        </div>
+                    </div>
+
+                    <!-- Salida Comparativa Call vs Put -->
+                    <div class="md:col-span-2 space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <!-- Call Box -->
+                            <div class="p-4 bg-emerald-950/30 border border-emerald-800/40 rounded-xl">
+                                <div class="text-xs text-emerald-400 font-bold uppercase tracking-wider mb-1">CALL (Opción de Compra)</div>
+                                <div id="calcCallPrice" class="text-3xl font-mono font-extrabold text-white">$0.00</div>
+                                <div class="mt-3 space-y-1 text-xs font-mono text-slate-300">
+                                    <div>Delta: <span id="calcCallDelta" class="text-emerald-400 font-bold">0.000</span></div>
+                                    <div>Gamma: <span id="calcCallGamma" class="text-cyan-400 font-bold">0.000</span></div>
+                                    <div>Vega (1%): <span id="calcCallVega" class="text-purple-400 font-bold">$0.000</span></div>
+                                    <div>Theta (día): <span id="calcCallTheta" class="text-rose-400 font-bold">$0.000</span></div>
+                                    <div>Rho (1%): <span id="calcCallRho" class="text-amber-400 font-bold">$0.000</span></div>
+                                    <div>IV Calculada: <span id="calcCallIV" class="text-white font-bold">0.0%</span></div>
+                                </div>
+                            </div>
+
+                            <!-- Put Box -->
+                            <div class="p-4 bg-rose-950/30 border border-rose-800/40 rounded-xl">
+                                <div class="text-xs text-rose-400 font-bold uppercase tracking-wider mb-1">PUT (Opción de Venta)</div>
+                                <div id="calcPutPrice" class="text-3xl font-mono font-extrabold text-white">$0.00</div>
+                                <div class="mt-3 space-y-1 text-xs font-mono text-slate-300">
+                                    <div>Delta: <span id="calcPutDelta" class="text-rose-400 font-bold">0.000</span></div>
+                                    <div>Gamma: <span id="calcPutGamma" class="text-cyan-400 font-bold">0.000</span></div>
+                                    <div>Vega (1%): <span id="calcPutVega" class="text-purple-400 font-bold">$0.000</span></div>
+                                    <div>Theta (día): <span id="calcPutTheta" class="text-rose-400 font-bold">$0.000</span></div>
+                                    <div>Rho (1%): <span id="calcPutRho" class="text-amber-400 font-bold">$0.000</span></div>
+                                    <div>IV Calculada: <span id="calcPutIV" class="text-white font-bold">0.0%</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Grafico de Sensibilidad -->
+                        <div class="card p-3">
+                            <span class="text-xs font-semibold text-slate-400 block mb-2">Simulación de Payoff de la Calculadora:</span>
+                            <div class="chart-container-sm">
+                                <canvas id="chartCalcPayoff"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- ==================== TAB 4: TEORIA Y FORMULAS ==================== -->
+        <div id="tab-theory" class="tab-pane">
+            <div class="card p-6 space-y-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-white mb-2">Fundamento Matemático y Econométrico</h2>
+                    <p class="text-slate-300 text-sm">
+                        Esta aplicación utiliza formulaciones analíticas exactas y contrastes econométricos institucionales,
+                        evitando aproximaciones simplistas o supuestos no contrastados.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Modelo Black-76 -->
+                    <div class="p-4 bg-slate-900/60 rounded-xl border border-slate-800">
+                        <h3 class="text-lg font-bold text-cyan-400 mb-2">1. Modelo Black-76 (Futuros Oficial CME/ICE)</h3>
+                        <p class="text-xs text-slate-300 mb-3">
+                            Fischer Black (1976) adaptó Black-Scholes para contratos de futuros donde no hay desembolso de capital al inicio:
+                        </p>
+                        <div class="font-mono text-xs bg-slate-950 p-3 rounded text-slate-200 space-y-2">
+                            <div>d₁ = [ln(F / K) + 0.5 σ² T] / (σ √T)</div>
+                            <div>d₂ = d₁ - σ √T</div>
+                            <div>C = e⁻ʳᵀ [ F Φ(d₁) - K Φ(d₂) ]</div>
+                            <div>P = e⁻ʳᵀ [ K Φ(-d₂) - F Φ(-d₁) ]</div>
+                        </div>
+                    </div>
+
+                    <!-- Modelo Black-Scholes-Merton -->
+                    <div class="p-4 bg-slate-900/60 rounded-xl border border-slate-800">
+                        <h3 class="text-lg font-bold text-emerald-400 mb-2">2. Black-Scholes-Merton (1973 con Carry q)</h3>
+                        <p class="text-xs text-slate-300 mb-3">
+                            Modelo generalizado con costo de almacenamiento o conveniencia continuo q:
+                        </p>
+                        <div class="font-mono text-xs bg-slate-950 p-3 rounded text-slate-200 space-y-2">
+                            <div>d₁ = [ln(S / K) + (r - q + 0.5 σ²) T] / (σ √T)</div>
+                            <div>d₂ = d₁ - σ √T</div>
+                            <div>C = S e⁻ᵍᵀ Φ(d₁) - K e⁻ʳᵀ Φ(d₂)</div>
+                            <div>P = K e⁻ʳᵀ Φ(-d₂) - S e⁻ᵍᵀ Φ(-d₁)</div>
+                        </div>
+                    </div>
+
+                    <!-- Estimadores de Volatilidad -->
+                    <div class="p-4 bg-slate-900/60 rounded-xl border border-slate-800">
+                        <h3 class="text-lg font-bold text-amber-400 mb-2">3. Estimadores Econométricos de Volatilidad</h3>
+                        <p class="text-xs text-slate-300 mb-3">
+                            Capturan el rango intradiario y superan la ineficiencia de Close-to-Close:
+                        </p>
+                        <div class="font-mono text-xs bg-slate-950 p-3 rounded text-slate-200 space-y-2">
+                            <div><strong>Parkinson (1980):</strong> σ² = (1 / 4 ln 2 N) Σ [ln(Hᵢ / Lᵢ)]²</div>
+                            <div><strong>Garman-Klass (1980):</strong> σ² = (1/N) Σ [ 0.5 ln(H/L)² - (2 ln 2 - 1) ln(C/O)² ]</div>
+                        </div>
+                    </div>
+
+                    <!-- Contrastes Econometricos -->
+                    <div class="p-4 bg-slate-900/60 rounded-xl border border-slate-800">
+                        <h3 class="text-lg font-bold text-purple-400 mb-2">4. Contrastes de Diagnóstico de Residuos</h3>
+                        <p class="text-xs text-slate-300 mb-3">
+                            Verifican empíricamente si se cumplen los supuestos de martingala y distribución lognormal:
+                        </p>
+                        <div class="font-mono text-xs bg-slate-950 p-3 rounded text-slate-200 space-y-2">
+                            <div><strong>Jarque-Bera:</strong> JB = (N/6) [ S² + 0.25 (K - 3)² ] ~ χ²(2)</div>
+                            <div><strong>Durbin-Watson:</strong> DW = Σ(eₜ - eₜ₋₁)² / Σ eₜ² (Autocorrelación serial)</div>
+                            <div><strong>Sesgo Medio (Bias):</strong> ē = (1/N) Σ(Realizado - Estimado)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script src="web_adapter.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
