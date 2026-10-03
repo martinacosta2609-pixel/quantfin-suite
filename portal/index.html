@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QuantFin Cloud Suite | Terminal Cuantitativa Unificada</title>
+  <title>Economato | Terminal Cuantitativa & Auditoría de Supuestos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500;1,6..72,600&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
@@ -17,8 +17,8 @@
     .font-mono {
       font-family: 'Fira Code', monospace;
     }
-    .glow-cyan {
-      box-shadow: 0 0 35px -5px rgba(6, 182, 212, 0.25);
+    .font-quote {
+      font-family: 'Newsreader', serif;
     }
     .card-hover {
       transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -34,6 +34,20 @@
         linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
     }
+    /* Smooth hover popover styling */
+    .popover-card {
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(8px) scale(0.98);
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+    .stat-pill:hover .popover-card {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body class="min-h-screen bg-grid flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
@@ -43,11 +57,11 @@
     <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center font-mono font-black text-black text-xl shadow-lg shadow-cyan-500/30">
-          Q
+          E
         </div>
         <div>
-          <span class="font-extrabold tracking-tight text-lg text-white">QUANTFIN <span class="text-cyan-400">CLOUD SUITE</span></span>
-          <span class="text-xs text-slate-400 block font-mono">Terminal Cuantitativa & Econométrica Unificada</span>
+          <span class="font-extrabold tracking-tight text-lg text-white">ECONOMATO <span class="text-cyan-400">FINANCIAL SUITE</span></span>
+          <span class="text-xs text-slate-400 block font-mono">Terminal Cuantitativa & Crítica de Modelos</span>
         </div>
       </div>
       <div class="flex items-center gap-3">
@@ -56,7 +70,7 @@
           <span>4 MOTORES ACTIVOS</span>
         </div>
         <div class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-300 text-xs font-mono">
-          <span>FASTAPI ASYNC ENGINE</span>
+          <span>AUDITORÍA ECONOMÉTRICA</span>
         </div>
       </div>
     </div>
@@ -64,36 +78,238 @@
 
   <!-- Hero Section -->
   <main class="max-w-7xl mx-auto px-6 py-12 flex-1 w-full">
-    <div class="text-center max-w-3xl mx-auto mb-12">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 text-xs font-mono uppercase tracking-wider mb-4">
-        <span>⚡ Suite Financiera Institucional</span>
-      </div>
-      <h1 class="text-4xl sm:text-5xl font-extrabold text-white tracking-tight mb-4">
-        Selecciona tu <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500">Módulo Cuantitativo</span>
+    <div class="text-center max-w-4xl mx-auto mb-10">
+      
+      <!-- Main Title: Economato -->
+      <h1 class="text-5xl sm:text-6xl font-black text-white tracking-tight mb-4">
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500">Economato</span>
       </h1>
-      <p class="text-slate-400 text-base leading-relaxed">
-        Accede a modelos econométricos rigurosos, cotizaciones en tiempo real, valoración por flujos descontados, regresiones multifactoriales y pricing de derivados.
+
+      <!-- Epigraph / Quote Box -->
+      <div class="max-w-2xl mx-auto my-6 p-5 rounded-2xl bg-slate-900/60 border border-slate-800/90 shadow-xl backdrop-blur relative overflow-hidden">
+        <div class="absolute -top-6 -left-6 text-7xl text-slate-800/40 font-serif select-none pointer-events-none">“</div>
+        <p class="font-quote text-slate-200 text-lg sm:text-xl italic leading-relaxed relative z-10">
+          «No es lo que no sabes lo que te mete en problemas; es lo que crees saber con certeza y que, en realidad, no es así.»
+        </p>
+        <div class="mt-3 flex items-center justify-between border-t border-slate-800/60 pt-2 text-xs font-mono">
+          <span class="text-slate-500 uppercase tracking-widest text-[10px]">Axioma Epistemológico</span>
+          <span class="text-cyan-400 font-semibold">— Mark Twain</span>
+        </div>
+      </div>
+
+      <!-- Conceptual Explanation -->
+      <p class="text-slate-400 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
+        Los modelos e indicadores financieros solo iluminan una porción simplificada de la realidad. A menudo, las variables que omiten o no logran cuantificar resultan mucho más determinantes para explicar el verdadero valor que aquellas que sí pueden observar.
       </p>
+
+      <div class="mt-4 flex items-center justify-center gap-2 text-xs text-slate-500 font-mono">
+        <span>💡 Pasa el cursor sobre los módulos para ver qué observan, qué asumen y qué ignoran</span>
+      </div>
     </div>
 
-    <!-- Quick Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 max-w-4xl mx-auto font-mono text-xs">
-      <div class="bg-slate-900/50 border border-slate-800/80 p-3 rounded-xl text-center">
-        <div class="text-slate-400 uppercase text-[10px]">Renta Fija</div>
-        <div class="text-cyan-400 font-bold text-base mt-0.5">Soberana AR</div>
+    <!-- The 4 Stat Boxes with Interactive Hover Tooltips -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12 max-w-4xl mx-auto font-mono text-xs relative">
+      
+      <!-- Box 1: Renta Fija -->
+      <div class="stat-pill relative group bg-slate-900/60 border border-slate-800/90 hover:border-cyan-500/60 p-3 rounded-xl text-center cursor-pointer transition-colors shadow-lg">
+        <div class="text-slate-400 uppercase text-[10px] tracking-wider">Renta Fija</div>
+        <div class="text-cyan-400 font-bold text-base mt-0.5 flex items-center justify-center gap-1">
+          <span>Soberana AR</span>
+          <span class="text-[10px] text-slate-500 group-hover:text-cyan-300 transition">ⓘ</span>
+        </div>
+
+        <!-- Popover Hover Card -->
+        <div class="popover-card absolute left-1/2 -translate-x-1/2 top-full mt-3 w-80 sm:w-96 p-4 rounded-xl bg-slate-950/95 border border-cyan-500/40 shadow-2xl backdrop-blur-xl z-50 text-left">
+          <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+            <span class="font-bold text-cyan-400 text-xs">MODELO: RENTA FIJA / TIR & VAN</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">BYMA / BCRA</span>
+          </div>
+          
+          <div class="space-y-3 font-sans text-xs">
+            <div>
+              <div class="text-[11px] font-bold text-amber-300 font-mono flex items-center gap-1 mb-1">
+                <span>📋 SUPUESTOS CLAVE:</span>
+              </div>
+              <ul class="text-slate-300 space-y-1 pl-3 list-disc marker:text-amber-400 leading-snug">
+                <li>Asume reinversión de todos los cupones exactamente a la misma TIR hasta la madurez.</li>
+                <li>Asume cumplimiento irrestricto del prospecto sin quitas (<span class="italic">haircuts</span>) ni canjes compulsivos.</li>
+                <li>Asume curva de rendimientos plana para el flujo de amortización.</li>
+              </ul>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold text-emerald-400 font-mono flex items-center gap-1 mb-1">
+                <span>👁️ QUÉ OBSERVA:</span>
+              </div>
+              <p class="text-slate-300 leading-snug">
+                Cronograma contractual, precios de mercado en BYMA (ARS/USD), paridades, Modified Duration y cotizaciones implícitas (MEP/CCL).
+              </p>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold text-rose-400 font-mono flex items-center gap-1 mb-1">
+                <span>⚠️ QUÉ NO MIDE (IGNORA):</span>
+              </div>
+              <ul class="text-slate-300 space-y-1 pl-3 list-disc marker:text-rose-400 leading-snug">
+                <li>Riesgo de default soberano y probabilidad real de reestructuración.</li>
+                <li>Iliquidez repentina en momentos de pánico sistémico (spread <span class="italic">bid-ask</span> extremo).</li>
+                <li>Factores políticos e institucionales que explican la prima de riesgo país.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="bg-slate-900/50 border border-slate-800/80 p-3 rounded-xl text-center">
-        <div class="text-slate-400 uppercase text-[10px]">Renta Variable</div>
-        <div class="text-emerald-400 font-bold text-base mt-0.5">S&P 500 / DCF</div>
+
+      <!-- Box 2: Renta Variable -->
+      <div class="stat-pill relative group bg-slate-900/60 border border-slate-800/90 hover:border-emerald-500/60 p-3 rounded-xl text-center cursor-pointer transition-colors shadow-lg">
+        <div class="text-slate-400 uppercase text-[10px] tracking-wider">Renta Variable</div>
+        <div class="text-emerald-400 font-bold text-base mt-0.5 flex items-center justify-center gap-1">
+          <span>S&P 500 / DCF</span>
+          <span class="text-[10px] text-slate-500 group-hover:text-emerald-300 transition">ⓘ</span>
+        </div>
+
+        <!-- Popover Hover Card -->
+        <div class="popover-card absolute left-1/2 -translate-x-1/2 top-full mt-3 w-80 sm:w-96 p-4 rounded-xl bg-slate-950/95 border border-emerald-500/40 shadow-2xl backdrop-blur-xl z-50 text-left">
+          <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+            <span class="font-bold text-emerald-400 text-xs">MODELO: DCF & MONTE CARLO</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">S&P 500</span>
+          </div>
+
+          <div class="space-y-3 font-sans text-xs">
+            <div>
+              <div class="text-[11px] font-bold text-amber-300 font-mono flex items-center gap-1 mb-1">
+                <span>📋 SUPUESTOS CLAVE:</span>
+              </div>
+              <ul class="text-slate-300 space-y-1 pl-3 list-disc marker:text-amber-400 leading-snug">
+                <li>Asume que el flujo libre de caja (FCF) futuro se proyecta a partir de márgenes contables pasados.</li>
+                <li>Asume costo de capital (WACC) y tasa de crecimiento terminal a perpetuidad constantes.</li>
+                <li>Asume que los múltiplos comparables representan firmas con riesgo idéntico.</li>
+              </ul>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold text-emerald-400 font-mono flex items-center gap-1 mb-1">
+                <span>👁️ QUÉ OBSERVA:</span>
+              </div>
+              <p class="text-slate-300 leading-snug">
+                Estados contables auditados, ingresos, EBITDA, estructura de deuda neta y distribuciones estocásticas mediante 5,000 caminos Monte Carlo.
+              </p>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold text-rose-400 font-mono flex items-center gap-1 mb-1">
+                <span>⚠️ QUÉ NO MIDE (IGNORA):</span>
+              </div>
+              <ul class="text-slate-300 space-y-1 pl-3 list-disc marker:text-rose-400 leading-snug">
+                <li>Disrupciones tecnológicas destructivas o pérdida del foso competitivo (<span class="italic">moat</span>).</li>
+                <li>Calidad, integridad y ética del equipo directivo (management).</li>
+                <li>Riesgos regulatorios, litigios antimonopolio y partidas contables fuera de balance.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="bg-slate-900/50 border border-slate-800/80 p-3 rounded-xl text-center">
-        <div class="text-slate-400 uppercase text-[10px]">Factores de Riesgo</div>
-        <div class="text-purple-400 font-bold text-base mt-0.5">FF3 & FF5 HAC</div>
+
+      <!-- Box 3: Factores de Riesgo -->
+      <div class="stat-pill relative group bg-slate-900/60 border border-slate-800/90 hover:border-purple-500/60 p-3 rounded-xl text-center cursor-pointer transition-colors shadow-lg">
+        <div class="text-slate-400 uppercase text-[10px] tracking-wider">Factores de Riesgo</div>
+        <div class="text-purple-400 font-bold text-base mt-0.5 flex items-center justify-center gap-1">
+          <span>FF3 & FF5 HAC</span>
+          <span class="text-[10px] text-slate-500 group-hover:text-purple-300 transition">ⓘ</span>
+        </div>
+
+        <!-- Popover Hover Card -->
+        <div class="popover-card absolute left-1/2 -translate-x-1/2 top-full mt-3 w-80 sm:w-96 p-4 rounded-xl bg-slate-950/95 border border-purple-500/40 shadow-2xl backdrop-blur-xl z-50 text-left">
+          <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+            <span class="font-bold text-purple-400 text-xs">MODELO: FAMA-FRENCH MULTIFACTORIAL</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800">DARTMOUTH TUCK</span>
+          </div>
+
+          <div class="space-y-3 font-sans text-xs">
+            <div>
+              <div class="text-[11px] font-bold text-amber-300 font-mono flex items-center gap-1 mb-1">
+                <span>📋 SUPUESTOS CLAVE:</span>
+              </div>
+              <ul class="text-slate-300 space-y-1 pl-3 list-disc marker:text-amber-400 leading-snug">
+                <li>Asume relación lineal entre retornos y las primas de mercado, tamaño, valor, rentabilidad e inversión.</li>
+                <li>Asume mercados con eficiencia suficiente donde los factores compensan riesgo real.</li>
+                <li>Asume betas sistemáticas invariables o estacionarias durante la ventana analizada.</li>
+              </ul>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold text-emerald-400 font-mono flex items-center gap-1 mb-1">
+                <span>👁️ QUÉ OBSERVA:</span>
+              </div>
+              <p class="text-slate-300 leading-snug">
+                Series empíricas de Kenneth French, bondad de ajuste (R²), Alfa de Jensen y significancia estadística con matriz de covarianza robusta HAC Newey-West.
+              </p>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold text-rose-400 font-mono flex items-center gap-1 mb-1">
+                <span>⚠️ QUÉ NO MIDE (IGNORA):</span>
+              </div>
+              <ul class="text-slate-300 space-y-1 pl-3 list-disc marker:text-rose-400 leading-snug">
+                <li>Riesgos idiosincráticos severos (fraudes, quiebras imprevistas, juicios millonarios).</li>
+                <li>Rupturas estructurales: en pánicos de liquidez las correlaciones se van a 1 y las betas colapsan.</li>
+                <li>Costos de transacción reales, comisiones y restricciones para ventas en corto.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="bg-slate-900/50 border border-slate-800/80 p-3 rounded-xl text-center">
-        <div class="text-slate-400 uppercase text-[10px]">Derivados & Griegas</div>
-        <div class="text-amber-400 font-bold text-base mt-0.5">BSM & Black-76</div>
+
+      <!-- Box 4: Derivados & Griegas -->
+      <div class="stat-pill relative group bg-slate-900/60 border border-slate-800/90 hover:border-amber-500/60 p-3 rounded-xl text-center cursor-pointer transition-colors shadow-lg">
+        <div class="text-slate-400 uppercase text-[10px] tracking-wider">Derivados & Griegas</div>
+        <div class="text-amber-400 font-bold text-base mt-0.5 flex items-center justify-center gap-1">
+          <span>BSM & Black-76</span>
+          <span class="text-[10px] text-slate-500 group-hover:text-amber-300 transition">ⓘ</span>
+        </div>
+
+        <!-- Popover Hover Card -->
+        <div class="popover-card absolute left-1/2 -translate-x-1/2 top-full mt-3 w-80 sm:w-96 p-4 rounded-xl bg-slate-950/95 border border-amber-500/40 shadow-2xl backdrop-blur-xl z-50 text-left">
+          <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+            <span class="font-bold text-amber-400 text-xs">MODELO: BLACK-SCHOLES & BLACK-76</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">CME / ICE</span>
+          </div>
+
+          <div class="space-y-3 font-sans text-xs">
+            <div>
+              <div class="text-[11px] font-bold text-amber-300 font-mono flex items-center gap-1 mb-1">
+                <span>📋 SUPUESTOS CLAVE:</span>
+              </div>
+              <ul class="text-slate-300 space-y-1 pl-3 list-disc marker:text-amber-400 leading-snug">
+                <li>Asume Movimiento Browniano Geométrico con volatilidad constante (σ) y retornos log-normales.</li>
+                <li>Asume negociación continua y cobertura dinámica perfecta sin fricciones ni costos de rebalanceo.</li>
+                <li>Asume tasa libre de riesgo libre de volatilidad y ausencia total de arbitraje.</li>
+              </ul>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold text-emerald-400 font-mono flex items-center gap-1 mb-1">
+                <span>👁️ QUÉ OBSERVA:</span>
+              </div>
+              <p class="text-slate-300 leading-snug">
+                Precios spot y futuros, strike, tiempo a expiración (T), volatilidad implícita (IV) y sensibilidades matemáticas analíticas (Delta, Gamma, Vega, Theta, Rho).
+              </p>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold text-rose-400 font-mono flex items-center gap-1 mb-1">
+                <span>⚠️ QUÉ NO MIDE (IGNORA):</span>
+              </div>
+              <ul class="text-slate-300 space-y-1 pl-3 list-disc marker:text-rose-400 leading-snug">
+                <li>Colas pesadas (<span class="italic">fat tails</span> / leptocurtosis) y saltos discretos (<span class="italic">jumps</span> o crashes).</li>
+                <li>Sonrisa de volatilidad (<span class="italic">volatility smile/skew</span>): la volatilidad empírica cambia con el strike.</li>
+                <li>Volatilidad estocástica y correlación asimétrica de caída de precios.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
+
     </div>
 
     <!-- The 4 Main Tool Cards -->
@@ -194,12 +410,12 @@
   <footer class="border-t border-slate-800/80 bg-slate-950/60 py-6 text-center text-xs text-slate-500 font-mono">
     <div class="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
       <div>
-        <span>Desarrollado para Análisis Financiero & Econometría Cuantitativa</span>
+        <span>Economato • Filosofía Crítica en Finanzas Cuantitativas & Econometría</span>
       </div>
       <div class="flex items-center gap-4 text-slate-400">
         <span>FastAPI + Python 3.13</span>
         <span>•</span>
-        <span>Cloud Ready Free Tier</span>
+        <span>Cloud Ready</span>
       </div>
     </div>
   </footer>

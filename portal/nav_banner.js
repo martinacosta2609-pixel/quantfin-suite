@@ -32,7 +32,7 @@
     left.innerHTML = `
       <a href="/" style="text-decoration: none; color: #38bdf8; font-weight: 800; font-size: 12px; display: flex; align-items: center; gap: 6px;">
         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></span>
-        QUANTFIN SUITE
+        ECONOMATO
       </a>
     `;
 

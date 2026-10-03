@@ -219,12 +219,51 @@ class BondEngine:
             "cashflows": cfs
         }
 
+    # Plausible ranges for a priced instrument with a real prospectus schedule
+    VAN_TIR_MIN = -5.0
+    VAN_TIR_MAX = 50.0
+    VAN_PARITY_MIN = 15.0
+    VAN_PARITY_MAX = 150.0
+
+    def van_eligibility(self, bond_item: dict):
+        """
+        Decides whether an instrument can be valued by DCF / VAN.
+        Only instruments with a real prospectus cashflow schedule (bond_db) qualify.
+        Generic instruments (Lecaps, Boncer CER, letras, ONs) only have an invented
+        bullet flow of 100 at maturity, which yields meaningless TIR/VAN, so they are excluded.
+        Returns (eligible: bool, reason: str).
+        """
+        if not bond_item:
+            return False, "Sin datos"
+        if not bond_item.get("is_sovereign"):
+            return False, "Sin cronograma de flujos real (instrumento genérico)"
+        cfs = bond_item.get("cashflows") or []
+        if not cfs:
+            return False, "Sin flujos futuros"
+        eval_price = bond_item.get("eval_price") or bond_item.get("eval_price_usd") or 0.0
+        if eval_price <= 0:
+            return False, "Sin precio"
+        tir = bond_item.get("tir", 0.0) or 0.0
+        if not (self.VAN_TIR_MIN <= tir <= self.VAN_TIR_MAX) or tir == 0.0:
+            return False, f"TIR no confiable ({tir:.2f}%)"
+        parity = bond_item.get("parity", 0.0) or 0.0
+        if not (self.VAN_PARITY_MIN <= parity <= self.VAN_PARITY_MAX):
+            return False, f"Paridad fuera de rango ({parity:.1f}%)"
+        # Schedule must return the outstanding principal (VR) exactly once
+        vr = bond_item.get("vr", 0.0) or 0.0
+        sum_amort = sum(cf.get("amort", 0.0) for cf in cfs)
+        if vr > 0 and abs(sum_amort - vr) > 0.5:
+            return False, "Cronograma de amortización incompleto"
+        return True, ""
+
     def calculate_van(self, bond_metrics: dict, investment_amount: float, k_rate_pct: float, include_terminal_vt: bool = True):
         """
         Calculates Net Present Value (VAN / NPV) for an investment amount
         and required cost of capital rate k (%).
-        If include_terminal_vt is True, on the final maturity date (with the last dividend/coupon),
-        adds the return of the bond's Technical Value (VT) representing the recovery of the investment.
+        The invested capital (VR) is returned exactly once, following the prospectus:
+        amortization installments + the final redemption on the maturity date.
+        If include_terminal_vt is True and the schedule leaves any principal unamortized,
+        that residual is added on the final maturity date so the capital is always recovered.
         """
         if not bond_metrics or "cashflows" not in bond_metrics:
             return None
@@ -246,7 +285,9 @@ class BondEngine:
         for i, cf in enumerate(cfs):
             is_last = (i == n_cfs - 1)
             t = max(0.001, cf["years"])
-            terminal_capital = (vt if (is_last and include_terminal_vt) else 0.0)
+            # Residual principal not covered by the schedule (0 for complete schedules)
+            residual = max(0.0, cf.get("remaining_vr", 0.0)) if is_last else 0.0
+            terminal_capital = residual if include_terminal_vt else 0.0
             total_period_cf = cf["total"] + terminal_capital
 
             df = 1.0 / ((1.0 + k_annual / freq) ** (freq * t)) if (1.0 + k_annual / freq) > 0 else 1.0

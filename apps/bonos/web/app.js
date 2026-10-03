@@ -454,11 +454,34 @@ function initVanEvents() {
   }
 }
 
+// Plausible ranges for an instrument with a real prospectus schedule
+const VAN_TIR_MIN = -5.0;
+const VAN_TIR_MAX = 50.0;
+const VAN_PARITY_MIN = 15.0;
+const VAN_PARITY_MAX = 150.0;
+
+// Only instruments with a real cashflow schedule and sane metrics can be valued by VAN.
+// Generic instruments (Lecaps, Boncer CER, letras, ONs) only carry an invented bullet flow
+// and produce meaningless TIRs (e.g. > 10.000%), so they are excluded from this module.
+function isVanEligible(bond) {
+  if (!bond) return false;
+  if (typeof bond.van_eligible === 'boolean' && !bond.van_eligible) return false;
+  if (!bond.is_sovereign) return false;
+  if (!bond.cashflows || bond.cashflows.length === 0) return false;
+  const evalPrice = bond.eval_price || bond.eval_price_usd || 0.0;
+  if (!(evalPrice > 0)) return false;
+  const tir = Number(bond.tir);
+  if (!isFinite(tir) || tir === 0 || tir < VAN_TIR_MIN || tir > VAN_TIR_MAX) return false;
+  const parity = Number(bond.parity);
+  if (!isFinite(parity) || parity < VAN_PARITY_MIN || parity > VAN_PARITY_MAX) return false;
+  return true;
+}
+
 function populateVanBondSelector() {
   const sel = document.getElementById('vanBondSelect');
   if (!sel) return;
 
-  const validBonds = allBonds.filter(b => b.cashflows && b.cashflows.length > 0);
+  const validBonds = allBonds.filter(isVanEligible);
   // Sort with main benchmarks on top
   validBonds.sort((a, b) => {
     const isMainA = SOVEREIGN_BENCHMARKS.some(s => a.symbol.startsWith(s));
@@ -470,17 +493,36 @@ function populateVanBondSelector() {
 
   const prevVal = sel.value;
   sel.innerHTML = '';
+
+  const excludedCount = allBonds.length - validBonds.length;
+  const noteEl = document.getElementById('vanExcludedNote');
+  if (noteEl) {
+    noteEl.innerText = excludedCount > 0
+      ? `${validBonds.length} instrumentos con cronograma de flujos real. ${excludedCount} excluidos (Lecaps, Boncer, letras y ONs sin flujos confiables).`
+      : '';
+  }
+
+  if (validBonds.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.innerText = 'Sin instrumentos valuables (mercado cerrado o sin precios)';
+    sel.appendChild(opt);
+    vanSelectedBond = null;
+    return;
+  }
+
   validBonds.forEach(b => {
     const opt = document.createElement('option');
     opt.value = b.symbol;
-    opt.innerText = `${b.symbol} - ${b.name || b.type} (${b.currency} | Precio: ${b.eval_price || b.price})`;
+    const px = b.eval_price || b.eval_price_usd || b.price;
+    opt.innerText = `${b.symbol} - ${b.name || b.type} (TIR ${b.tir.toFixed(2)}% | Precio u$s ${Number(px).toFixed(2)})`;
     sel.appendChild(opt);
   });
 
   if (prevVal && validBonds.some(b => b.symbol === prevVal)) {
     sel.value = prevVal;
     vanSelectedBond = prevVal;
-  } else if (validBonds.length > 0) {
+  } else {
     // Default to GD30D, AL30D or first
     const defaultBond = validBonds.find(b => b.symbol === 'GD30D' || b.symbol === 'AL30D') || validBonds[0];
     sel.value = defaultBond.symbol;
@@ -489,8 +531,8 @@ function populateVanBondSelector() {
 }
 
 function calculateVANMath(bond, investment, kRatePct, includeTerminalVT = vanIncludeTerminalVT) {
-  if (!bond || !bond.cashflows || bond.cashflows.length === 0) return null;
-  const evalPrice = bond.eval_price || bond.eval_price_usd || bond.price || 0.0;
+  if (!isVanEligible(bond)) return null;
+  const evalPrice = bond.eval_price || bond.eval_price_usd || 0.0;
   if (evalPrice <= 0) return null;
 
   const k = kRatePct / 100.0;
@@ -499,13 +541,18 @@ function calculateVANMath(bond, investment, kRatePct, includeTerminalVT = vanInc
 
   let theoreticalPrice = 0.0;
   let cumPv = 0.0;
+  let cumCapital = 0.0;
   const pvCashflows = [];
   const n = bond.cashflows.length;
 
   bond.cashflows.forEach((cf, idx) => {
     const isLast = (idx === n - 1);
-    const terminalCapital = (isLast && includeTerminalVT) ? vt : 0.0;
+    // The capital (VR) is returned once, per the prospectus: amortizations + final redemption.
+    // Only principal left unamortized by the schedule is added at maturity (normally 0).
+    const residual = isLast ? Math.max(0.0, cf.remaining_vr || 0.0) : 0.0;
+    const terminalCapital = includeTerminalVT ? residual : 0.0;
     const totalWithTerminal = cf.total + terminalCapital;
+    cumCapital += cf.amort + terminalCapital;
     const t = Math.max(0.001, cf.years);
     // Semiannual discount factor: 1 / (1 + k/2)^(2*t)
     const df = 1.0 / Math.pow(1.0 + k / freq, freq * t);
@@ -517,6 +564,8 @@ function calculateVANMath(bond, investment, kRatePct, includeTerminalVT = vanInc
       coupon: cf.coupon,
       amort: cf.amort,
       terminalCapital: terminalCapital,
+      cumCapital: cumCapital,
+      isLast: isLast,
       total: totalWithTerminal,
       baseTotal: cf.total,
       years: t,
@@ -578,13 +627,18 @@ function runVanCalculation() {
     populateVanBondSelector();
   }
   const bond = allBonds.find(b => b.symbol === vanSelectedBond);
-  if (!bond) return;
+  const res = bond ? calculateVANMath(bond, vanInvestment, vanKRate, vanIncludeTerminalVT) : null;
+  if (!res) {
+    const cfTbodyEmpty = document.getElementById('vanCashflowsBody');
+    if (cfTbodyEmpty) {
+      cfTbodyEmpty.innerHTML = `<tr><td colspan="9" class="center" style="padding:16px; color:var(--text-dim);">No hay instrumentos con flujos de fondos confiables para valuar en este momento.</td></tr>`;
+    }
+    renderMarketVanRanking();
+    return;
+  }
 
-  const res = calculateVANMath(bond, vanInvestment, vanKRate, vanIncludeTerminalVT);
-  if (!res) return;
-
-  // Update KPIs
-  const curSym = bond.currency === 'USD' ? 'u$s' : '$';
+  // Update KPIs (eligible instruments are valued in USD)
+  const curSym = 'u$s';
   document.getElementById('kpiInvestment').innerText = `${curSym} ${res.investment.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   document.getElementById('kpiNominals').innerText = `Nominales: ${Math.round(res.nominals).toLocaleString('es-AR')}`;
 
@@ -616,20 +670,25 @@ function runVanCalculation() {
   // Render Cashflows Table
   const cfTbody = document.getElementById('vanCashflowsBody');
   cfTbody.innerHTML = '';
+  const vrTotal = bond.vr || 100.0;
   res.cashflows.forEach(cf => {
     const tr = document.createElement('tr');
-    if (cf.terminalCapital > 0) {
+    if (cf.isLast) {
       tr.style.backgroundColor = 'rgba(16, 185, 129, 0.12)';
     }
-    const rescueCell = cf.terminalCapital > 0
-      ? `<span style="color:#10b981; font-weight:700;">+ ${curSym} ${cf.terminalCapital.toFixed(2)}</span>`
-      : `<span style="color:var(--text-dim);">-</span>`;
+    const capPct = vrTotal > 0 ? (cf.cumCapital / vrTotal) * 100.0 : 0.0;
+    const capitalCell = cf.isLast
+      ? `<span style="color:#10b981; font-weight:700;">${curSym} ${cf.cumCapital.toFixed(2)} (${capPct.toFixed(0)}%)</span>`
+      : `<span style="color:var(--text-muted);">${curSym} ${cf.cumCapital.toFixed(2)}</span>`;
+    const amortCell = cf.terminalCapital > 0
+      ? `${curSym} ${cf.amort.toFixed(2)} <span style="color:#10b981;">+ ${cf.terminalCapital.toFixed(2)}</span>`
+      : `${curSym} ${cf.amort.toFixed(2)}`;
 
     tr.innerHTML = `
-      <td><strong>${cf.date}</strong> ${cf.terminalCapital > 0 ? '<span class="badge-tag badge-lecap" style="font-size:9px; padding:1px 4px; margin-left:4px;">VTO</span>' : ''}</td>
+      <td><strong>${cf.date}</strong> ${cf.isLast ? '<span class="badge-tag badge-lecap" style="font-size:9px; padding:1px 4px; margin-left:4px;">VTO</span>' : ''}</td>
       <td class="right">${curSym} ${cf.coupon.toFixed(3)}</td>
-      <td class="right">${curSym} ${cf.amort.toFixed(2)}</td>
-      <td class="right">${rescueCell}</td>
+      <td class="right">${amortCell}</td>
+      <td class="right">${capitalCell}</td>
       <td class="right" style="font-weight:700; color:#fff;">${curSym} ${cf.total.toFixed(2)}</td>
       <td class="right">${cf.years.toFixed(2)}</td>
       <td class="right" style="font-family:var(--font-mono); color:var(--text-dim);">${cf.df.toFixed(4)}</td>
@@ -652,7 +711,7 @@ function renderMarketVanRanking() {
   const seen = new Set();
 
   allBonds.forEach(b => {
-    if (!b.cashflows || b.cashflows.length === 0) return;
+    if (!isVanEligible(b)) return;
     // Prefer USD benchmarks and single tickers
     const sym = b.symbol;
     if (!sym.endsWith('D') && !SOVEREIGN_BENCHMARKS.includes(sym)) return;
@@ -666,6 +725,11 @@ function renderMarketVanRanking() {
 
   // Sort by VAN descending (most attractive first)
   candidates.sort((a, b) => b.totalVAN - a.totalVAN);
+
+  if (candidates.length === 0) {
+    rankingTbody.innerHTML = `<tr><td colspan="6" class="center" style="padding:16px; color:var(--text-dim);">Sin instrumentos con flujos confiables y precio vigente.</td></tr>`;
+    return;
+  }
 
   candidates.forEach(c => {
     const tr = document.createElement('tr');
@@ -1194,7 +1258,9 @@ function updateModalVAN() {
 
   const res = calculateVANMath(currentSelectedBond, inv, k, vanIncludeTerminalVT);
   if (!res) {
-    amtEl.innerText = '$ -';
+    amtEl.innerText = 'No disponible: sin flujos de fondos confiables';
+    amtEl.style.color = 'var(--text-dim)';
+    badgeEl.style.backgroundColor = 'transparent';
     badgeEl.style.borderColor = 'var(--border-subtle)';
     return;
   }
