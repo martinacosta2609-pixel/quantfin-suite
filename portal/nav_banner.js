@@ -30,7 +30,7 @@
     const left = document.createElement('div');
     left.style.cssText = 'display: flex; align-items: center; gap: 12px;';
     left.innerHTML = `
-      <a href="/" style="text-decoration: none; color: #38bdf8; font-weight: 800; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+      <a href="/?v=${Date.now()}" style="text-decoration: none; color: #38bdf8; font-weight: 800; font-size: 12px; display: flex; align-items: center; gap: 6px;">
         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></span>
         ECONOMATO
       </a>
@@ -49,7 +49,7 @@
 
     links.forEach(item => {
       const a = document.createElement('a');
-      a.href = item.path;
+      a.href = item.path === '/' ? '/?v=' + Date.now() : item.path;
       a.textContent = item.name;
       const isActive = (item.path === '/' && (currentPath === '/' || currentPath === '')) ||
                        (item.path !== '/' && currentPath.startsWith(item.path.replace(/\/$/, '')));
