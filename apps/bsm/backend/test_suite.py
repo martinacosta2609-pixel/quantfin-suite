@@ -118,7 +118,7 @@ def test_api_bridge():
     print(f"Quote Gold: {q['data']['name']}, Precio={q['data']['price']}, Vol={q['data'].get('vol_garman_klass_pct')}%")
     assert q["status"] == "success" and q["data"]["price"] > 0
 
-    # Single Option Calculation
+    # Single Option Calculation (Dual Fair Premium Evaluation)
     calc = bridge.calculate_single_option({
         "underlying_price": 2650.0,
         "strike": 2650.0,
@@ -129,9 +129,14 @@ def test_api_bridge():
         "option_type": "call",
         "market_price": 42.0
     })
-    print("Recomendacion Bridge:", calc["data"]["recommendation"]["action"])
-    print("Edge %:", calc["data"]["recommendation"]["edge_pct"])
+    print("Prima Justa Call:", calc["data"]["call"]["fair_premium"])
+    print("Prima Justa Put:", calc["data"]["put"]["fair_premium"])
+    print("Paridad Put-Call Discrepancia:", calc["data"]["put_call_parity"]["discrepancy"])
     assert calc["status"] == "success"
+    assert "call" in calc["data"] and calc["data"]["call"]["fair_premium"] > 0
+    assert "put" in calc["data"] and calc["data"]["put"]["fair_premium"] > 0
+    assert "put_call_parity" in calc["data"]
+    assert calc["data"]["put_call_parity"]["is_satisfied"]
     assert "greeks" in calc["data"]
     assert "payoff_curve" in calc["data"]
 

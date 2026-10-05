@@ -136,7 +136,7 @@
                     </div>
                 </div>
 
-                <!-- PANEL DERECHO: Configurador de Opcion y Recomendacion Cuantitativa Central -->
+                <!-- PANEL DERECHO: Configurador de Opcion y Valoracion de Primas Justas (Call & Put) -->
                 <div class="card p-4 panel-valuation">
                     <!-- Controles de Valoracion -->
                     <div class="valuation-controls-bar">
@@ -146,14 +146,6 @@
                                 <option value="black76" selected>Black-76 (Futuros Oficial CME/ICE)</option>
                                 <option value="bsm">Black-Scholes-Merton (Spot / ETFs)</option>
                             </select>
-                        </div>
-
-                        <div class="control-item">
-                            <label>Tipo de Opción:</label>
-                            <div class="toggle-group">
-                                <button type="button" class="btn-toggle active" id="btnToggleCall" data-type="call">CALL (Compra)</button>
-                                <button type="button" class="btn-toggle" id="btnTogglePut" data-type="put">PUT (Venta)</button>
-                            </div>
                         </div>
 
                         <div class="control-item">
@@ -169,98 +161,188 @@
                                 <input type="number" id="inputStrike" class="form-input font-mono" step="0.5" value="2650">
                             </div>
                         </div>
+
+                        <div class="control-item">
+                            <label>Gráfico Payoff Activo:</label>
+                            <div class="toggle-group">
+                                <button type="button" class="btn-toggle active" id="btnToggleCall" data-type="call">CALL</button>
+                                <button type="button" class="btn-toggle" id="btnTogglePut" data-type="put">PUT</button>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- TARJETA DE RECOMENDACION CUANTITATIVA CENTRAL (EL NUCLEO DEL PEDIDO) -->
-                    <div class="recommendation-hero-card mt-4" id="recommendationCard">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-3">
-                                <div class="rec-icon-badge" id="recBadgeIcon">▲</div>
-                                <div>
-                                    <div class="text-xs uppercase tracking-wider text-slate-400">DIAGNÓSTICO CUANTITATIVO DE INVERSIÓN:</div>
-                                    <div id="recActionTitle" class="text-2xl font-extrabold tracking-tight">ANALIZANDO MERCADO...</div>
+                    <!-- PANEL DUAL DE PRIMAS JUSTAS TEÓRICAS (CALL & PUT SIMULTANEAS) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <!-- TARJETA PRIMA JUSTA CALL -->
+                        <div class="card p-4 border-t-4 border-emerald-500 bg-slate-900/80">
+                            <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                                <div class="flex items-center gap-2">
+                                    <span class="badge-call text-xs uppercase px-2 py-0.5 font-bold">CALL</span>
+                                    <span class="text-xs text-slate-300 font-semibold">Opción de Compra</span>
+                                </div>
+                                <div class="text-right">
+                                    <span id="callStatusBadge" class="badge-signal text-xs">EN PARIDAD</span>
                                 </div>
                             </div>
-                            <div class="text-right">
-                                <span class="text-xs text-slate-400 block">Intensidad de Señal:</span>
-                                <span id="recSignalStrength" class="badge-signal">MODERADA</span>
+
+                            <div class="mt-3 flex items-baseline justify-between">
+                                <div>
+                                    <span class="text-xs text-slate-400 uppercase tracking-wider block">Prima Justa Teórica:</span>
+                                    <div class="text-3xl font-mono font-extrabold text-emerald-400" id="callFairPrice">$0.0000</div>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-xs text-slate-400 block">Cotización Mercado:</span>
+                                    <span class="text-lg font-mono font-bold text-white" id="callMarketPrice">$0.00</span>
+                                    <div class="text-xs font-mono" id="callDiffText">Dif: $0.00</div>
+                                </div>
+                            </div>
+
+                            <!-- Desglose de Valor Intrínseco y Extrínseco -->
+                            <div class="grid grid-cols-2 gap-2 mt-3 p-2 bg-slate-950/60 rounded text-xs font-mono">
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]">Valor Intrínseco:</span>
+                                    <span id="callIntrinsic" class="text-slate-200 font-semibold">$0.00</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]">Valor Tiempo (Extrínseco):</span>
+                                    <span id="callTimeValue" class="text-slate-200 font-semibold">$0.00</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]">Vol. Implícita (IV):</span>
+                                    <span id="callIV" class="text-amber-400 font-semibold">0.0%</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]">Prob. Ejercicio (ITM):</span>
+                                    <span id="callPoP" class="text-emerald-400 font-semibold">0.0%</span>
+                                </div>
+                            </div>
+
+                            <!-- Griegas Call -->
+                            <div class="mt-3 pt-2 border-t border-slate-800">
+                                <span class="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Griegas Analíticas Call:</span>
+                                <div class="grid grid-cols-5 gap-1 text-center font-mono text-xs">
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Delta (Δ)</span>
+                                        <span id="callDelta" class="text-emerald-400 font-bold">+0.00</span>
+                                    </div>
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Gamma (Γ)</span>
+                                        <span id="callGamma" class="text-cyan-400 font-bold">0.00</span>
+                                    </div>
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Vega (𝒱)</span>
+                                        <span id="callVega" class="text-purple-400 font-bold">$0.00</span>
+                                    </div>
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Theta (Θ)</span>
+                                        <span id="callTheta" class="text-rose-400 font-bold">-$0.00</span>
+                                    </div>
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Rho (ρ)</span>
+                                        <span id="callRho" class="text-amber-400 font-bold">$0.00</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-right">
+                                <span class="text-[11px] text-slate-400">Break-Even Call: </span>
+                                <span id="callBreakEven" class="font-mono text-xs font-bold text-white">$0.00</span>
                             </div>
                         </div>
 
-                        <!-- Metricas Clave de la Recomendacion -->
-                        <div class="rec-metrics-grid mt-4">
-                            <div class="rec-metric-item">
-                                <span class="label">Precio Teórico (Modelo):</span>
-                                <span id="recTheoreticalPrice" class="value font-mono text-cyan-400">$0.00</span>
+                        <!-- TARJETA PRIMA JUSTA PUT -->
+                        <div class="card p-4 border-t-4 border-rose-500 bg-slate-900/80">
+                            <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                                <div class="flex items-center gap-2">
+                                    <span class="badge-put text-xs uppercase px-2 py-0.5 font-bold">PUT</span>
+                                    <span class="text-xs text-slate-300 font-semibold">Opción de Venta</span>
+                                </div>
+                                <div class="text-right">
+                                    <span id="putStatusBadge" class="badge-signal text-xs">EN PARIDAD</span>
+                                </div>
                             </div>
-                            <div class="rec-metric-item">
-                                <span class="label">Precio de Mercado (Prima):</span>
-                                <span id="recMarketPrice" class="value font-mono text-white">$0.00</span>
-                            </div>
-                            <div class="rec-metric-item">
-                                <span class="label">Edge Teórico (Mispricing):</span>
-                                <span id="recEdgePct" class="value font-mono font-bold">+0.00%</span>
-                            </div>
-                            <div class="rec-metric-item">
-                                <span class="label">Vol. Implícita (IV):</span>
-                                <span id="recIV" class="value font-mono text-amber-300">0.00%</span>
-                            </div>
-                            <div class="rec-metric-item">
-                                <span class="label">Prob. de Ganancia (PoP):</span>
-                                <span id="recPoP" class="value font-mono text-emerald-400">0.0%</span>
-                            </div>
-                            <div class="rec-metric-item">
-                                <span class="label">Punto de Equilibrio (Break-Even):</span>
-                                <span id="recBreakEven" class="value font-mono text-slate-200">$0.00</span>
-                            </div>
-                        </div>
 
-                        <!-- Razon Cuantitativa Institucional -->
-                        <div class="mt-4 pt-3 border-t border-slate-700/60">
-                            <div class="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Fundamento Cuantitativo:</div>
-                            <ul id="recRationaleList" class="rationale-list text-sm text-slate-200">
-                                <li>Evaluando condiciones de arbitraje y superficie de volatilidad...</li>
-                            </ul>
+                            <div class="mt-3 flex items-baseline justify-between">
+                                <div>
+                                    <span class="text-xs text-slate-400 uppercase tracking-wider block">Prima Justa Teórica:</span>
+                                    <div class="text-3xl font-mono font-extrabold text-rose-400" id="putFairPrice">$0.0000</div>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-xs text-slate-400 block">Cotización Mercado:</span>
+                                    <span class="text-lg font-mono font-bold text-white" id="putMarketPrice">$0.00</span>
+                                    <div class="text-xs font-mono" id="putDiffText">Dif: $0.00</div>
+                                </div>
+                            </div>
+
+                            <!-- Desglose de Valor Intrínseco y Extrínseco -->
+                            <div class="grid grid-cols-2 gap-2 mt-3 p-2 bg-slate-950/60 rounded text-xs font-mono">
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]">Valor Intrínseco:</span>
+                                    <span id="putIntrinsic" class="text-slate-200 font-semibold">$0.00</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]">Valor Tiempo (Extrínseco):</span>
+                                    <span id="putTimeValue" class="text-slate-200 font-semibold">$0.00</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]">Vol. Implícita (IV):</span>
+                                    <span id="putIV" class="text-amber-400 font-semibold">0.0%</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]">Prob. Ejercicio (ITM):</span>
+                                    <span id="putPoP" class="text-rose-400 font-semibold">0.0%</span>
+                                </div>
+                            </div>
+
+                            <!-- Griegas Put -->
+                            <div class="mt-3 pt-2 border-t border-slate-800">
+                                <span class="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Griegas Analíticas Put:</span>
+                                <div class="grid grid-cols-5 gap-1 text-center font-mono text-xs">
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Delta (Δ)</span>
+                                        <span id="putDelta" class="text-rose-400 font-bold">-0.00</span>
+                                    </div>
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Gamma (Γ)</span>
+                                        <span id="putGamma" class="text-cyan-400 font-bold">0.00</span>
+                                    </div>
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Vega (𝒱)</span>
+                                        <span id="putVega" class="text-purple-400 font-bold">$0.00</span>
+                                    </div>
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Theta (Θ)</span>
+                                        <span id="putTheta" class="text-rose-400 font-bold">-$0.00</span>
+                                    </div>
+                                    <div class="bg-slate-950/40 p-1 rounded">
+                                        <span class="text-[9px] text-slate-500 block">Rho (ρ)</span>
+                                        <span id="putRho" class="text-amber-400 font-bold">$0.00</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-right">
+                                <span class="text-[11px] text-slate-400">Break-Even Put: </span>
+                                <span id="putBreakEven" class="font-mono text-xs font-bold text-white">$0.00</span>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- GRIEGAS ANALITICAS COMPLETAS -->
-                    <div class="mt-4">
-                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Griegas Analíticas de Sensibilidad:</div>
-                        <div class="greeks-grid">
-                            <div class="greek-card">
-                                <div class="greek-name">Delta (Δ)</div>
-                                <div id="greekDelta" class="greek-val font-mono text-emerald-400">+0.500</div>
-                                <div class="greek-desc">dPrecio / dSubyacente</div>
-                            </div>
-                            <div class="greek-card">
-                                <div class="greek-name">Gamma (Γ)</div>
-                                <div id="greekGamma" class="greek-val font-mono text-cyan-400">+0.0042</div>
-                                <div class="greek-desc">dΔ / dSubyacente</div>
-                            </div>
-                            <div class="greek-card">
-                                <div class="greek-name">Vega (𝒱)</div>
-                                <div id="greekVega" class="greek-val font-mono text-purple-400">$0.450</div>
-                                <div class="greek-desc">Por 1% de Volatilidad</div>
-                            </div>
-                            <div class="greek-card">
-                                <div class="greek-name">Theta (Θ)</div>
-                                <div id="greekTheta" class="greek-val font-mono text-rose-400">-$0.125</div>
-                                <div class="greek-desc">Decaimiento por Día</div>
-                            </div>
-                            <div class="greek-card">
-                                <div class="greek-name">Rho (ρ)</div>
-                                <div id="greekRho" class="greek-val font-mono text-amber-400">+$0.082</div>
-                                <div class="greek-desc">Por 1% Tasa de Interés</div>
-                            </div>
+                    <!-- AUDITORIA DE PARIDAD PUT-CALL EN TIEMPO REAL -->
+                    <div class="mt-3 p-3 bg-slate-900/60 border border-slate-800 rounded-lg flex items-center justify-between text-xs font-mono">
+                        <div class="flex items-center gap-2">
+                            <span class="text-cyan-400 font-bold">PARIDAD PUT-CALL:</span>
+                            <span class="text-slate-300">C_justa - P_justa = <span id="parityObservedDiff" class="text-white font-bold">$0.00</span></span>
+                            <span class="text-slate-500">| Objetivo Teórico: <span id="parityTargetDiff">$0.00</span></span>
+                        </div>
+                        <div id="parityStatusBadge" class="text-emerald-400 font-bold">
+                            ✓ Paridad de Arbitraje Verificada
                         </div>
                     </div>
 
                     <!-- GRAFICO DE PAYOFF INTERACTIVO -->
                     <div class="mt-4">
                         <div class="flex justify-between items-center mb-1">
-                            <span class="text-xs font-semibold text-slate-400">Perfil de Rendimiento (P&L Payoff al Vencimiento vs Hoy):</span>
-                            <span class="text-xs font-mono text-slate-500">P&L Neto = Intrinseco - Prima</span>
+                            <span class="text-xs font-semibold text-slate-400">Perfil de Rendimiento (P&L Payoff al Vencimiento vs Prima Justa Hoy):</span>
+                            <span class="text-xs font-mono text-slate-500" id="payoffChartSubtitle">Curva de P&L = Valor Intrínseco - Prima</span>
                         </div>
                         <div class="chart-container-md">
                             <canvas id="chartPayoff"></canvas>
@@ -292,15 +374,15 @@
                                 <th>Bid</th>
                                 <th>Ask</th>
                                 <th>Último (Mid)</th>
-                                <th>Teórico BSM</th>
-                                <th>Edge %</th>
+                                <th>Prima Justa</th>
+                                <th>Desvío %</th>
                                 <th>Vol. Imp. (IV)</th>
                                 <th>Delta (Δ)</th>
                                 <th>Gamma (Γ)</th>
                                 <th>Theta (Θ)</th>
                                 <th>Volumen</th>
                                 <th>Open Int.</th>
-                                <th>Recomendación</th>
+                                <th>Estado Paridad</th>
                             </tr>
                         </thead>
                         <tbody id="optionsTableBody">

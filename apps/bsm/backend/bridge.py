@@ -40,8 +40,9 @@ class ApiBridge:
 
     def calculate_single_option(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Calcula una opcion especifica: precio teorico, griegas completas,
-        volatilidad implicita, curva de P&L al vencimiento y recomendacion.
+        Calcula las primas justas teoricas tanto de CALL como de PUT de manera simultanea,
+        junto con sus Griegas analiticas, descomposicion de valor intrinseco/temporal,
+        comparativa contra precios de mercado (si estan disponibles) y paridad Put-Call.
         """
         try:
             S_or_F = float(params.get("underlying_price", 100.0))
@@ -53,84 +54,184 @@ class ApiBridge:
             q = float(params.get("dividend_yield", 0.0)) / 100.0
             model = str(params.get("model", "black76")).lower()
             option_type = str(params.get("option_type", "call")).lower()
-            market_price = float(params.get("market_price", 0.0))
 
-            # Precio teorico
+            call_market_price = params.get("call_market_price")
+            if call_market_price is None and option_type == "call":
+                call_market_price = params.get("market_price", 0.0)
+            call_market_price = float(call_market_price) if call_market_price is not None else 0.0
+
+            put_market_price = params.get("put_market_price")
+            if put_market_price is None and option_type == "put":
+                put_market_price = params.get("market_price", 0.0)
+            put_market_price = float(put_market_price) if put_market_price is not None else 0.0
+
+            # 1. Calculo de Prima Justa Teórica (Call y Put)
             if model == "black76":
-                theo_price = QuantEngine.black76_price(S_or_F, K, T, r, sigma, option_type)
+                call_theo = QuantEngine.black76_price(S_or_F, K, T, r, sigma, "call")
+                put_theo = QuantEngine.black76_price(S_or_F, K, T, r, sigma, "put")
             else:
-                theo_price = QuantEngine.bsm_price(S_or_F, K, T, r, sigma, q, option_type)
+                call_theo = QuantEngine.bsm_price(S_or_F, K, T, r, sigma, q, "call")
+                put_theo = QuantEngine.bsm_price(S_or_F, K, T, r, sigma, q, "put")
 
-            # Griegas
-            greeks = QuantEngine.calculate_greeks(S_or_F, K, T, r, sigma, q, model, option_type)
+            # 2. Griegas Analíticas completas para Call y Put
+            call_greeks = QuantEngine.calculate_greeks(S_or_F, K, T, r, sigma, q, model, "call")
+            put_greeks = QuantEngine.calculate_greeks(S_or_F, K, T, r, sigma, q, model, "put")
 
-            # Volatilidad Implicita si se provee precio de mercado
-            iv = None
-            if market_price > 0.001:
-                iv = QuantEngine.calculate_implied_volatility(
-                    market_price=market_price,
-                    S_or_F=S_or_F,
-                    K=K,
-                    T=T,
-                    r=r,
-                    q=q,
-                    model=model,
-                    option_type=option_type
+            # 3. Volatilidad Implicita (si hay cotizaciones de mercado)
+            call_iv = None
+            if call_market_price > 0.001:
+                call_iv = QuantEngine.calculate_implied_volatility(
+                    market_price=call_market_price, S_or_F=S_or_F, K=K, T=T, r=r, q=q, model=model, option_type="call"
                 )
 
-            # Recomendacion cuantitativa
-            eff_market_price = market_price if market_price > 0.001 else theo_price
-            rec = QuantEngine.generate_recommendation(
-                market_price=eff_market_price,
-                theoretical_price=theo_price,
-                iv=iv,
+            put_iv = None
+            if put_market_price > 0.001:
+                put_iv = QuantEngine.calculate_implied_volatility(
+                    market_price=put_market_price, S_or_F=S_or_F, K=K, T=T, r=r, q=q, model=model, option_type="put"
+                )
+
+            # 4. Evaluación de Prima Justa (sin recomendaciones de compra/venta)
+            call_eval = QuantEngine.evaluate_fair_premium(
+                market_price=call_market_price,
+                theoretical_price=call_theo,
+                iv=call_iv,
                 hv=sigma,
-                option_type=option_type,
-                delta=greeks["delta"],
-                d2=greeks["d2"]
+                option_type="call",
+                delta=call_greeks["delta"],
+                d2=call_greeks["d2"],
+                underlying_price=S_or_F,
+                strike=K
             )
 
-            # Curva de Payoff y P&L
-            is_call = option_type == "call"
+            put_eval = QuantEngine.evaluate_fair_premium(
+                market_price=put_market_price,
+                theoretical_price=put_theo,
+                iv=put_iv,
+                hv=sigma,
+                option_type="put",
+                delta=put_greeks["delta"],
+                d2=put_greeks["d2"],
+                underlying_price=S_or_F,
+                strike=K
+            )
+
+            # 5. Paridad Put-Call Teórica
+            if model == "black76":
+                parity_target = float(np.exp(-r * T) * (S_or_F - K))
+            else:
+                parity_target = float(S_or_F * np.exp(-q * T) - K * np.exp(-r * T))
+            parity_observed = call_theo - put_theo
+            parity_diff = abs(parity_observed - parity_target)
+
+            # 6. Puntos de Equilibrio (Break-Evens)
+            call_eff_mkt = call_market_price if call_market_price > 0.001 else call_theo
+            put_eff_mkt = put_market_price if put_market_price > 0.001 else put_theo
+            call_break_even = K + call_eff_mkt
+            put_break_even = max(0.0, K - put_eff_mkt)
+
+            # 7. Curvas de Payoff y Valor Teórico (para Call y Put)
             s_min = S_or_F * 0.70
             s_max = S_or_F * 1.30
             spot_steps = np.linspace(s_min, s_max, 45)
-            payoff_at_expiry = []
-            theo_value_today = []
+            
+            call_expiry_pnl = []
+            call_today_val = []
+            put_expiry_pnl = []
+            put_today_val = []
 
             for s_val in spot_steps:
-                # Payoff neto de la prima comprada
-                intrinsic = max(0.0, (s_val - K) if is_call else (K - s_val))
-                pnl = intrinsic - eff_market_price
-                payoff_at_expiry.append(round(float(pnl), 2))
-
-                # Valor hoy con el nuevo spot
+                # Call
+                c_intr = max(0.0, s_val - K)
+                call_expiry_pnl.append(round(float(c_intr - call_eff_mkt), 2))
                 if model == "black76":
-                    v_today = QuantEngine.black76_price(s_val, K, T, r, sigma, option_type) - eff_market_price
+                    c_today = QuantEngine.black76_price(s_val, K, T, r, sigma, "call") - call_eff_mkt
                 else:
-                    v_today = QuantEngine.bsm_price(s_val, K, T, r, sigma, q, option_type) - eff_market_price
-                theo_value_today.append(round(float(v_today), 2))
+                    c_today = QuantEngine.bsm_price(s_val, K, T, r, sigma, q, "call") - call_eff_mkt
+                call_today_val.append(round(float(c_today), 2))
 
-            # Break-even
-            if is_call:
-                break_even = K + eff_market_price
-            else:
-                break_even = max(0.0, K - eff_market_price)
+                # Put
+                p_intr = max(0.0, K - s_val)
+                put_expiry_pnl.append(round(float(p_intr - put_eff_mkt), 2))
+                if model == "black76":
+                    p_today = QuantEngine.black76_price(s_val, K, T, r, sigma, "put") - put_eff_mkt
+                else:
+                    p_today = QuantEngine.bsm_price(s_val, K, T, r, sigma, q, "put") - put_eff_mkt
+                put_today_val.append(round(float(p_today), 2))
+
+            # Referencia activa segun el toggle seleccionado por el usuario
+            active_is_call = (option_type == "call")
+            active_theo = call_theo if active_is_call else put_theo
+            active_mkt = call_eff_mkt if active_is_call else put_eff_mkt
+            active_eval = call_eval if active_is_call else put_eval
+            active_greeks = call_greeks if active_is_call else put_greeks
+            active_be = call_break_even if active_is_call else put_break_even
 
             return {
                 "status": "success",
                 "data": {
-                    "theoretical_price": round(theo_price, 4),
-                    "market_price": round(eff_market_price, 4),
-                    "implied_volatility_pct": round(iv * 100.0, 2) if iv else None,
-                    "model_used": "Black-76 (Futuros)" if model == "black76" else "Black-Scholes-Merton (Carry)",
-                    "break_even": round(break_even, 2),
-                    "greeks": greeks,
-                    "recommendation": rec,
+                    # Datos integrales de ambas primas justas
+                    "call": {
+                        "fair_premium": round(call_theo, 4),
+                        "market_price": round(call_eff_mkt, 4),
+                        "intrinsic_value": call_eval["intrinsic_value"],
+                        "time_value": call_eval["time_value"],
+                        "diff_amount": call_eval["diff_amount"],
+                        "diff_pct": call_eval["diff_pct"],
+                        "valuation_status": call_eval["valuation_status"],
+                        "status_color": call_eval["status_color"],
+                        "implied_volatility_pct": round(call_iv * 100.0, 2) if call_iv else None,
+                        "break_even": round(call_break_even, 2),
+                        "prob_itm_pct": call_eval["prob_itm_pct"],
+                        "greeks": call_greeks,
+                        "details": call_eval["details"]
+                    },
+                    "put": {
+                        "fair_premium": round(put_theo, 4),
+                        "market_price": round(put_eff_mkt, 4),
+                        "intrinsic_value": put_eval["intrinsic_value"],
+                        "time_value": put_eval["time_value"],
+                        "diff_amount": put_eval["diff_amount"],
+                        "diff_pct": put_eval["diff_pct"],
+                        "valuation_status": put_eval["valuation_status"],
+                        "status_color": put_eval["status_color"],
+                        "implied_volatility_pct": round(put_iv * 100.0, 2) if put_iv else None,
+                        "break_even": round(put_break_even, 2),
+                        "prob_itm_pct": put_eval["prob_itm_pct"],
+                        "greeks": put_greeks,
+                        "details": put_eval["details"]
+                    },
+                    "put_call_parity": {
+                        "observed_diff": round(float(parity_observed), 4),
+                        "target_diff": round(float(parity_target), 4),
+                        "discrepancy": round(float(parity_diff), 6),
+                        "is_satisfied": bool(parity_diff < 1e-4)
+                    },
+                    # Campos principales
+                    "theoretical_price": round(active_theo, 4),
+                    "market_price": round(active_mkt, 4),
+                    "model_used": "Black-76 (Futuros Oficial)" if model == "black76" else "Black-Scholes-Merton (Carry)",
+                    "break_even": round(active_be, 2),
+                    "greeks": active_greeks,
+                    "fair_evaluation": active_eval,
+                    "recommendation": {
+                        "action": active_eval["valuation_status"],
+                        "signal_strength": "PARIDAD TEÓRICA",
+                        "color": active_eval["status_color"],
+                        "edge_pct": active_eval["diff_pct"],
+                        "theoretical_price": round(active_theo, 4),
+                        "market_price": round(active_mkt, 4),
+                        "prob_itm_pct": active_eval["prob_itm_pct"],
+                        "vol_spread_pct": active_eval["vol_spread_pct"],
+                        "rationale": active_eval["details"]
+                    },
                     "payoff_curve": {
                         "spots": [round(float(s), 2) for s in spot_steps],
-                        "expiry_pnl": payoff_at_expiry,
-                        "today_pnl": theo_value_today
+                        "call_expiry_pnl": call_expiry_pnl,
+                        "call_today_val": call_today_val,
+                        "put_expiry_pnl": put_expiry_pnl,
+                        "put_today_val": put_today_val,
+                        "expiry_pnl": call_expiry_pnl if active_is_call else put_expiry_pnl,
+                        "today_pnl": call_today_val if active_is_call else put_today_val
                     }
                 }
             }

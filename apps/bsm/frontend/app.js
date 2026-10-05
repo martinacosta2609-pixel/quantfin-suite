@@ -264,7 +264,7 @@ function getDaysDiff(dateStr) {
     return Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 }
 
-// RECALCULO DE VALORACION Y RECOMENDACION CENTRAL
+// RECALCULO DE VALORACION DE PRIMAS JUSTAS (CALL & PUT)
 async function recalculateValuation() {
     const S = AppState.quoteData ? AppState.quoteData.price : 100.0;
     const K = parseFloat(document.getElementById('inputStrike').value) || S;
@@ -275,14 +275,15 @@ async function recalculateValuation() {
     const vol = AppState.quoteData ? (AppState.quoteData.vol_garman_klass_pct || 20.0) : 20.0;
     const r = AppState.riskFreeRate * 100.0;
 
-    // Buscar precio de mercado en la cadena si existe ese strike
-    let marketPrice = 0.0;
+    // Buscar precios de mercado en la cadena tanto para CALL como para PUT
+    let callMkt = 0.0;
+    let putMkt = 0.0;
     if (AppState.chainData) {
-        const sideList = (optionType === 'call') ? AppState.chainData.calls : AppState.chainData.puts;
-        const match = sideList.find(item => Math.abs(item.strike - K) < 0.05 * S);
-        if (match) {
-            marketPrice = match.mid || match.last || 0.0;
-        }
+        const callMatch = (AppState.chainData.calls || []).find(item => Math.abs(item.strike - K) < 0.05 * S);
+        if (callMatch) callMkt = callMatch.mid || callMatch.last || 0.0;
+
+        const putMatch = (AppState.chainData.puts || []).find(item => Math.abs(item.strike - K) < 0.05 * S);
+        if (putMatch) putMkt = putMatch.mid || putMatch.last || 0.0;
     }
 
     const params = {
@@ -294,73 +295,110 @@ async function recalculateValuation() {
         dividend_yield: 0.0,
         model: model,
         option_type: optionType,
-        market_price: marketPrice
+        call_market_price: callMkt,
+        put_market_price: putMkt
     };
 
     const res = await callApi('calculate_single_option', params);
     if (!res || res.status !== 'success' || !res.data) return;
 
+    AppState.lastValuationData = res.data;
     updateValuationUI(res.data);
 }
 
-// ACTUALIZAR UI DE VALORACION, RECOMENDACION Y GRAFICO DE PAYOFF
+// ACTUALIZAR UI CON LAS PRIMAS JUSTAS DE CALL Y PUT SIMULTANEAS
 function updateValuationUI(data) {
-    const { theoretical_price, market_price, implied_volatility_pct, break_even, greeks, recommendation, payoff_curve } = data;
+    const { call, put, put_call_parity, payoff_curve } = data;
 
-    // HERO RECOMMENDATION BOX
-    const actionTitleEl = document.getElementById('recActionTitle');
-    const badgeIconEl = document.getElementById('recBadgeIcon');
-    const cardEl = document.getElementById('recommendationCard');
+    // 1. TARJETA PRIMA JUSTA CALL
+    if (call) {
+        document.getElementById('callFairPrice').innerText = `$${call.fair_premium.toFixed(4)}`;
+        document.getElementById('callMarketPrice').innerText = `$${call.market_price.toFixed(2)}`;
+        
+        const callDiffEl = document.getElementById('callDiffText');
+        callDiffEl.innerText = `Dif: ${call.diff_amount >= 0 ? '+' : ''}$${call.diff_amount.toFixed(2)} (${call.diff_pct >= 0 ? '+' : ''}${call.diff_pct.toFixed(1)}%)`;
+        callDiffEl.style.color = call.status_color;
 
-    actionTitleEl.innerText = recommendation.action;
-    actionTitleEl.style.color = recommendation.color;
-    badgeIconEl.style.color = recommendation.color;
-    badgeIconEl.innerText = recommendation.action.includes('COMPRA') ? '▲' : (recommendation.action.includes('VENTA') ? '▼' : '◆');
+        const callBadge = document.getElementById('callStatusBadge');
+        callBadge.innerText = call.valuation_status;
+        callBadge.style.color = call.status_color;
+        callBadge.style.borderColor = call.status_color;
 
-    cardEl.style.borderColor = recommendation.color;
+        document.getElementById('callIntrinsic').innerText = `$${call.intrinsic_value.toFixed(2)}`;
+        document.getElementById('callTimeValue').innerText = `$${call.time_value.toFixed(2)}`;
+        document.getElementById('callIV').innerText = call.implied_volatility_pct ? `${call.implied_volatility_pct.toFixed(1)}%` : '--';
+        document.getElementById('callPoP').innerText = `${call.prob_itm_pct.toFixed(1)}%`;
+        document.getElementById('callBreakEven').innerText = `$${call.break_even.toFixed(2)}`;
 
-    document.getElementById('recSignalStrength').innerText = recommendation.signal_strength;
-    document.getElementById('recSignalStrength').style.color = recommendation.color;
+        // Griegas Call
+        document.getElementById('callDelta').innerText = `${call.greeks.delta >= 0 ? '+' : ''}${call.greeks.delta.toFixed(3)}`;
+        document.getElementById('callGamma').innerText = `+${call.greeks.gamma.toFixed(4)}`;
+        document.getElementById('callVega').innerText = `$${call.greeks.vega.toFixed(3)}`;
+        document.getElementById('callTheta').innerText = `$${call.greeks.theta.toFixed(3)}`;
+        document.getElementById('callRho').innerText = `${call.greeks.rho >= 0 ? '+' : ''}$${call.greeks.rho.toFixed(3)}`;
+    }
 
-    document.getElementById('recTheoreticalPrice').innerText = `$${theoretical_price.toFixed(2)}`;
-    document.getElementById('recMarketPrice').innerText = `$${market_price.toFixed(2)}`;
+    // 2. TARJETA PRIMA JUSTA PUT
+    if (put) {
+        document.getElementById('putFairPrice').innerText = `$${put.fair_premium.toFixed(4)}`;
+        document.getElementById('putMarketPrice').innerText = `$${put.market_price.toFixed(2)}`;
+        
+        const putDiffEl = document.getElementById('putDiffText');
+        putDiffEl.innerText = `Dif: ${put.diff_amount >= 0 ? '+' : ''}$${put.diff_amount.toFixed(2)} (${put.diff_pct >= 0 ? '+' : ''}${put.diff_pct.toFixed(1)}%)`;
+        putDiffEl.style.color = put.status_color;
+
+        const putBadge = document.getElementById('putStatusBadge');
+        putBadge.innerText = put.valuation_status;
+        putBadge.style.color = put.status_color;
+        putBadge.style.borderColor = put.status_color;
+
+        document.getElementById('putIntrinsic').innerText = `$${put.intrinsic_value.toFixed(2)}`;
+        document.getElementById('putTimeValue').innerText = `$${put.time_value.toFixed(2)}`;
+        document.getElementById('putIV').innerText = put.implied_volatility_pct ? `${put.implied_volatility_pct.toFixed(1)}%` : '--';
+        document.getElementById('putPoP').innerText = `${put.prob_itm_pct.toFixed(1)}%`;
+        document.getElementById('putBreakEven').innerText = `$${put.break_even.toFixed(2)}`;
+
+        // Griegas Put
+        document.getElementById('putDelta').innerText = `${put.greeks.delta >= 0 ? '+' : ''}${put.greeks.delta.toFixed(3)}`;
+        document.getElementById('putGamma').innerText = `+${put.greeks.gamma.toFixed(4)}`;
+        document.getElementById('putVega').innerText = `$${put.greeks.vega.toFixed(3)}`;
+        document.getElementById('putTheta').innerText = `$${put.greeks.theta.toFixed(3)}`;
+        document.getElementById('putRho').innerText = `${put.greeks.rho >= 0 ? '+' : ''}$${put.greeks.rho.toFixed(3)}`;
+    }
+
+    // 3. PARIDAD PUT-CALL
+    if (put_call_parity) {
+        document.getElementById('parityObservedDiff').innerText = `$${put_call_parity.observed_diff.toFixed(2)}`;
+        document.getElementById('parityTargetDiff').innerText = `$${put_call_parity.target_diff.toFixed(2)}`;
+        const parityBadge = document.getElementById('parityStatusBadge');
+        if (put_call_parity.is_satisfied) {
+            parityBadge.innerText = `✓ Paridad Exacta (Discrepancia: ${put_call_parity.discrepancy.toFixed(6)})`;
+            parityBadge.className = 'text-emerald-400 font-bold';
+        } else {
+            parityBadge.innerText = `Discrepancia: ${put_call_parity.discrepancy.toFixed(4)}`;
+            parityBadge.className = 'text-amber-400 font-bold';
+        }
+    }
+
+    // 4. GRAFICO DE PAYOFF
+    const isCallActive = (AppState.activeOptionType === 'call');
+    const activeObj = isCallActive ? call : put;
+    document.getElementById('payoffChartSubtitle').innerText = `P&L = Valor Intrínseco - Prima Justa ($${activeObj ? activeObj.fair_premium.toFixed(2) : '0.00'})`;
     
-    const edgeEl = document.getElementById('recEdgePct');
-    edgeEl.innerText = `${recommendation.edge_pct >= 0 ? '+' : ''}${recommendation.edge_pct.toFixed(2)}%`;
-    edgeEl.style.color = recommendation.color;
-
-    document.getElementById('recIV').innerText = implied_volatility_pct ? `${implied_volatility_pct.toFixed(1)}%` : 'Calibrando';
-    document.getElementById('recPoP').innerText = `${recommendation.prob_itm_pct.toFixed(1)}%`;
-    document.getElementById('recBreakEven').innerText = `$${break_even.toFixed(2)}`;
-
-    // Rationale list
-    const ratListEl = document.getElementById('recRationaleList');
-    ratListEl.innerHTML = '';
-    (recommendation.rationale || []).forEach(item => {
-        const li = document.createElement('li');
-        li.innerText = item;
-        ratListEl.appendChild(li);
-    });
-
-    // GRIEGAS
-    document.getElementById('greekDelta').innerText = `${greeks.delta >= 0 ? '+' : ''}${greeks.delta.toFixed(3)}`;
-    document.getElementById('greekGamma').innerText = `+${greeks.gamma.toFixed(4)}`;
-    document.getElementById('greekVega').innerText = `$${greeks.vega.toFixed(3)}`;
-    document.getElementById('greekTheta').innerText = `$${greeks.theta.toFixed(3)}`;
-    document.getElementById('greekRho').innerText = `${greeks.rho >= 0 ? '+' : ''}$${greeks.rho.toFixed(3)}`;
-
-    // GRAFICO DE PAYOFF
-    renderPayoffChart(payoff_curve, break_even, AppState.quoteData?.price || 100);
+    renderPayoffChart(payoff_curve, activeObj ? activeObj.break_even : 0, isCallActive);
 }
 
 // RENDERIZAR GRAFICO DE PAYOFF INTERACTIVO
-function renderPayoffChart(payoffCurve, breakEven, currentSpot) {
+function renderPayoffChart(payoffCurve, breakEven, isCall) {
     const ctx = document.getElementById('chartPayoff').getContext('2d');
     if (AppState.charts.payoff) {
         AppState.charts.payoff.destroy();
     }
 
-    const { spots, expiry_pnl, today_pnl } = payoffCurve;
+    const spots = payoffCurve.spots;
+    const expiryPnl = isCall ? payoffCurve.call_expiry_pnl : payoffCurve.put_expiry_pnl;
+    const todayVal = isCall ? payoffCurve.call_today_val : payoffCurve.put_today_val;
+    const mainColor = isCall ? '#10B981' : '#F43F5E';
 
     AppState.charts.payoff = new Chart(ctx, {
         type: 'line',
@@ -368,16 +406,16 @@ function renderPayoffChart(payoffCurve, breakEven, currentSpot) {
             labels: spots,
             datasets: [
                 {
-                    label: 'P&L al Vencimiento (T=0)',
-                    data: expiry_pnl,
-                    borderColor: '#10B981',
+                    label: `Payoff al Vencimiento ${isCall ? 'CALL' : 'PUT'} (T=0)`,
+                    data: expiryPnl,
+                    borderColor: mainColor,
                     borderWidth: 2.5,
                     pointRadius: 0,
                     tension: 0
                 },
                 {
-                    label: 'Valor Teórico Hoy (t=0)',
-                    data: today_pnl,
+                    label: `Valor Teórico Justo Hoy (t=0)`,
+                    data: todayVal,
                     borderColor: '#38BDF8',
                     borderWidth: 1.5,
                     borderDash: [5, 5],
@@ -418,7 +456,7 @@ function renderPayoffChart(payoffCurve, breakEven, currentSpot) {
     });
 }
 
-// RENDERIZAR TABLA DE LA CADENA DE OPCIONES
+// RENDERIZAR TABLA DE LA CADENA DE OPCIONES (CON PRIMA JUSTA Y DESVIO)
 function renderOptionsTable(chainData) {
     const tbody = document.getElementById('optionsTableBody');
     if (!tbody) return;
@@ -445,6 +483,7 @@ function renderOptionsTable(chainData) {
         const tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
         const isCall = item.type === 'CALL';
+        const statusText = item.fair_status || item.recommendation || 'En Paridad';
 
         tr.innerHTML = `
             <td><span class="${isCall ? 'badge-call' : 'badge-put'}">${item.type}</span></td>
@@ -452,7 +491,7 @@ function renderOptionsTable(chainData) {
             <td>$${item.bid.toFixed(2)}</td>
             <td>$${item.ask.toFixed(2)}</td>
             <td class="font-bold text-cyan-300">$${item.mid.toFixed(2)}</td>
-            <td class="text-slate-300">$${item.theoretical.toFixed(2)}</td>
+            <td class="text-emerald-400 font-bold">$${item.theoretical.toFixed(2)}</td>
             <td class="font-bold" style="color: ${item.rec_color || '#FFFFFF'}">${item.edge_pct >= 0 ? '+' : ''}${item.edge_pct.toFixed(1)}%</td>
             <td class="text-amber-400">${item.iv_pct ? item.iv_pct.toFixed(1) + '%' : '--'}</td>
             <td class="${item.delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${item.delta.toFixed(2)}</td>
@@ -460,10 +499,10 @@ function renderOptionsTable(chainData) {
             <td class="text-rose-400">${item.theta.toFixed(2)}</td>
             <td class="text-slate-300">${item.volume.toLocaleString()}</td>
             <td class="text-slate-400">${item.open_interest.toLocaleString()}</td>
-            <td><span style="color: ${item.rec_color || '#94A3B8'}; font-size: 0.72rem; font-weight: 700;">${item.recommendation.split(' ')[0]}</span></td>
+            <td><span style="color: ${item.rec_color || '#94A3B8'}; font-size: 0.72rem; font-weight: 700;">${statusText}</span></td>
         `;
 
-        // Click en fila actualiza la evaluacion central
+        // Click en fila actualiza el strike en el panel
         tr.addEventListener('click', () => {
             document.getElementById('inputStrike').value = item.strike;
             if (isCall) {

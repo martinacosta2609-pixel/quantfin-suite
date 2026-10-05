@@ -374,15 +374,17 @@ class MarketDataProvider:
             calc_sigma = mkt_iv if (0.01 < mkt_iv < 3.0) else hv
             greeks = QuantEngine.calculate_greeks(S, K, T, r, calc_sigma, 0.0, "bsm", option_type)
 
-            # Recomendacion
-            rec = QuantEngine.generate_recommendation(
+            # Evaluacion de Prima Justa sin recomendaciones de compra/venta
+            eval_res = QuantEngine.evaluate_fair_premium(
                 market_price=mid,
                 theoretical_price=theo_price,
                 iv=mkt_iv if mkt_iv > 0.01 else None,
                 hv=hv,
                 option_type=option_type,
                 delta=greeks["delta"],
-                d2=greeks["d2"]
+                d2=greeks["d2"],
+                underlying_price=S,
+                strike=K
             )
 
             items.append({
@@ -393,6 +395,10 @@ class MarketDataProvider:
                 "last": round(last, 2),
                 "mid": round(mid, 2),
                 "theoretical": round(theo_price, 2),
+                "intrinsic": round(eval_res["intrinsic_value"], 2),
+                "time_value": round(eval_res["time_value"], 2),
+                "diff_amount": round(eval_res["diff_amount"], 2),
+                "diff_pct": eval_res["diff_pct"],
                 "iv_pct": round(mkt_iv * 100.0, 2) if mkt_iv > 0 else None,
                 "delta": round(greeks["delta"], 3),
                 "gamma": round(greeks["gamma"], 4),
@@ -400,9 +406,10 @@ class MarketDataProvider:
                 "vega": round(greeks["vega"], 3),
                 "volume": vol,
                 "open_interest": oi,
-                "recommendation": rec["action"],
-                "edge_pct": rec["edge_pct"],
-                "rec_color": rec["color"]
+                "fair_status": eval_res["valuation_status"],
+                "recommendation": eval_res["valuation_status"],
+                "edge_pct": eval_res["diff_pct"],
+                "rec_color": eval_res["status_color"]
             })
 
         return sorted(items, key=lambda x: x["strike"])
@@ -449,8 +456,8 @@ class MarketDataProvider:
             call_greeks = QuantEngine.calculate_greeks(F, K, T, r, smile_iv, 0.0, "black76", "call")
             put_greeks = QuantEngine.calculate_greeks(F, K, T, r, smile_iv, 0.0, "black76", "put")
 
-            call_rec = QuantEngine.generate_recommendation(call_mkt, call_theo, smile_iv, hv, "call", call_greeks["delta"], call_greeks["d2"])
-            put_rec = QuantEngine.generate_recommendation(put_mkt, put_theo, smile_iv, hv, "put", put_greeks["delta"], put_greeks["d2"])
+            call_eval = QuantEngine.evaluate_fair_premium(call_mkt, call_theo, smile_iv, hv, "call", call_greeks["delta"], call_greeks["d2"], F, K)
+            put_eval = QuantEngine.evaluate_fair_premium(put_mkt, put_theo, smile_iv, hv, "put", put_greeks["delta"], put_greeks["d2"], F, K)
 
             spread = round(call_mkt * 0.02, 2)
             calls.append({
@@ -461,6 +468,10 @@ class MarketDataProvider:
                 "last": round(call_mkt, 2),
                 "mid": round(call_mkt, 2),
                 "theoretical": round(call_theo, 2),
+                "intrinsic": round(call_eval["intrinsic_value"], 2),
+                "time_value": round(call_eval["time_value"], 2),
+                "diff_amount": round(call_eval["diff_amount"], 2),
+                "diff_pct": call_eval["diff_pct"],
                 "iv_pct": round(smile_iv * 100.0, 2),
                 "delta": round(call_greeks["delta"], 3),
                 "gamma": round(call_greeks["gamma"], 4),
@@ -468,9 +479,10 @@ class MarketDataProvider:
                 "vega": round(call_greeks["vega"], 3),
                 "volume": int(np.random.randint(50, 1200)),
                 "open_interest": int(np.random.randint(200, 5000)),
-                "recommendation": call_rec["action"],
-                "edge_pct": call_rec["edge_pct"],
-                "rec_color": call_rec["color"]
+                "fair_status": call_eval["valuation_status"],
+                "recommendation": call_eval["valuation_status"],
+                "edge_pct": call_eval["diff_pct"],
+                "rec_color": call_eval["status_color"]
             })
 
             spread_p = round(put_mkt * 0.02, 2)
@@ -482,6 +494,10 @@ class MarketDataProvider:
                 "last": round(put_mkt, 2),
                 "mid": round(put_mkt, 2),
                 "theoretical": round(put_theo, 2),
+                "intrinsic": round(put_eval["intrinsic_value"], 2),
+                "time_value": round(put_eval["time_value"], 2),
+                "diff_amount": round(put_eval["diff_amount"], 2),
+                "diff_pct": put_eval["diff_pct"],
                 "iv_pct": round(smile_iv * 100.0, 2),
                 "delta": round(put_greeks["delta"], 3),
                 "gamma": round(put_greeks["gamma"], 4),
@@ -489,9 +505,10 @@ class MarketDataProvider:
                 "vega": round(put_greeks["vega"], 3),
                 "volume": int(np.random.randint(50, 1200)),
                 "open_interest": int(np.random.randint(200, 5000)),
-                "recommendation": put_rec["action"],
-                "edge_pct": put_rec["edge_pct"],
-                "rec_color": put_rec["color"]
+                "fair_status": put_eval["valuation_status"],
+                "recommendation": put_eval["valuation_status"],
+                "edge_pct": put_eval["diff_pct"],
+                "rec_color": put_eval["status_color"]
             })
 
         return {

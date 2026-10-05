@@ -330,6 +330,82 @@ class QuantEngine:
         return float(np.sqrt(var_daily * period))
 
     @classmethod
+    def evaluate_fair_premium(
+        cls,
+        market_price: Optional[float],
+        theoretical_price: float,
+        iv: Optional[float],
+        hv: float,
+        option_type: str,
+        delta: float,
+        d2: float,
+        underlying_price: float,
+        strike: float
+    ) -> Dict[str, Any]:
+        """
+        Calcula la prima justa y su comparacion analitica contra el precio de mercado observado,
+        proporcionando descomposicion de valor intrinseco/temporal sin emitir recomendaciones de compra o venta.
+        """
+        is_call = option_type.lower() == "call"
+        
+        # Descomposicion de la prima teorica justa
+        intrinsic_val = max(0.0, (underlying_price - strike) if is_call else (strike - underlying_price))
+        time_val = max(0.0, theoretical_price - intrinsic_val)
+
+        # Probabilidad neutral al riesgo de finalizar ITM
+        prob_itm = float(norm.cdf(d2) if is_call else norm.cdf(-d2)) * 100.0
+
+        # Comparacion con precio de mercado observado
+        has_market = market_price is not None and market_price > 0.001
+        mkt_p = float(market_price) if has_market else theoretical_price
+        
+        diff = mkt_p - theoretical_price
+        diff_pct = (diff / theoretical_price * 100.0) if theoretical_price > 0.001 else 0.0
+        
+        # Evaluacion de paridad respecto al modelo teorico
+        if not has_market:
+            valuation_status = "Prima Justa Teórica"
+            status_color = "#38BDF8"
+        elif abs(diff_pct) <= 2.5:
+            valuation_status = "En Paridad con el Mercado (±2.5%)"
+            status_color = "#38BDF8"
+        elif diff > 0:
+            valuation_status = f"Prima de Mercado Sobre la Par (+{abs(diff_pct):.1f}%)"
+            status_color = "#F59E0B"
+        else:
+            valuation_status = f"Prima de Mercado Bajo la Par (-{abs(diff_pct):.1f}%)"
+            status_color = "#10B981"
+
+        vol_spread = (iv - hv) if (iv is not None) else 0.0
+
+        analysis_details = [
+            f"Prima Justa Calculada: ${theoretical_price:.4f} (Intrínseco: ${intrinsic_val:.2f} | Valor Tiempo: ${time_val:.2f}).",
+            f"Probabilidad de Ejercicio a Vencimiento (ITM): {prob_itm:.1f}%."
+        ]
+        if has_market:
+            analysis_details.append(
+                f"Cotización Observada en Mercado: ${mkt_p:.2f} (Diferencia: {diff:+.2f} / {diff_pct:+.1f}%)."
+            )
+            if iv is not None:
+                analysis_details.append(
+                    f"Volatilidad Implícita (IV): {iv*100:.1f}% vs Histórica (HV): {hv*100:.1f}% (Spread: {vol_spread*100:+.1f}%)."
+                )
+
+        return {
+            "theoretical_price": round(float(theoretical_price), 4),
+            "market_price": round(float(mkt_p), 4),
+            "intrinsic_value": round(float(intrinsic_val), 4),
+            "time_value": round(float(time_val), 4),
+            "diff_amount": round(float(diff), 4),
+            "diff_pct": round(float(diff_pct), 2),
+            "valuation_status": valuation_status,
+            "status_color": status_color,
+            "prob_itm_pct": round(float(prob_itm), 1),
+            "vol_spread_pct": round(float(vol_spread * 100), 2),
+            "details": analysis_details
+        }
+
+    @classmethod
     def generate_recommendation(
         cls,
         market_price: float,
@@ -339,87 +415,54 @@ class QuantEngine:
         option_type: str,
         delta: float,
         d2: float,
-        edge_threshold_pct: float = 4.0
+        edge_threshold_pct: float = 4.0,
+        underlying_price: Optional[float] = None,
+        strike: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        Genera recomendacion cuantitativa profesional (BUY / SELL / NEUTRAL)
-        basada en mispricing teorico, spread de volatilidad (IV - HV), y Probabilidad de Ganancia (PoP).
+        Metodo mantenido para compatibilidad: retorna la evaluacion de prima justa
+        sin recomendaciones de comprar o vender.
         """
         is_call = option_type.lower() == "call"
+        has_market = market_price > 0.001
+        mkt_p = float(market_price) if has_market else theoretical_price
         
-        if market_price <= 0.001:
-            edge_pct = 0.0
-        else:
-            edge_pct = ((theoretical_price - market_price) / market_price) * 100.0
-
-        # Spread de volatilidad
+        diff = mkt_p - theoretical_price
+        diff_pct = (diff / theoretical_price * 100.0) if theoretical_price > 0.001 else 0.0
+        
         vol_spread = (iv - hv) if (iv is not None) else 0.0
-
-        # Probabilidad de terminar ITM segun medida neutral al riesgo (N(d2) para Call, N(-d2) para Put)
         prob_itm = float(norm.cdf(d2) if is_call else norm.cdf(-d2)) * 100.0
 
-        action = "NEUTRAL"
-        signal_strength = "MODERADA"
-        color = "#94A3B8"  # Slate
-        rationale_items = []
-
-        # Logica cuantitativa de recomendacion:
-        # Edge positivo > threshold: El valor teorico es mayor al precio de mercado (opcion barata/infravalorada)
-        # Edge negativo < -threshold: El valor teorico es menor al precio de mercado (opcion cara/sobrevalorada)
-
-        if edge_pct >= edge_threshold_pct:
-            # Infravalorada en el mercado -> COMPRA
-            action = f"COMPRA RECOMENDADA (LONG {'CALL' if is_call else 'PUT'})"
-            color = "#10B981"  # Emerald
-            if edge_pct > 12.0:
-                signal_strength = "MUY FUERTE"
-            elif edge_pct > 7.0:
-                signal_strength = "FUERTE"
-            else:
-                signal_strength = "MODERADA"
-
-            rationale_items.append(f"La opcion cotiza con un DESCUENTO teorico del {abs(edge_pct):.2f}% respecto al modelo BSM.")
-            if iv is not None:
-                if vol_spread < -0.02:
-                    rationale_items.append(f"Volatilidad Implicita ({iv*100:.1f}%) < Volatilidad Historica ({hv*100:.1f}%): Mercado subvalorando el riesgo.")
-                else:
-                    rationale_items.append(f"Volatilidad Implicita cotiza en {iv*100:.1f}%.")
-            rationale_items.append(f"Probabilidad estadistica neutral de finalizar ITM: {prob_itm:.1f}%.")
-
-        elif edge_pct <= -edge_threshold_pct:
-            # Sobrevalorada en el mercado -> VENTA / LANZAMIENTO (SHORT)
-            action = f"VENTA / LANZAMIENTO RECOMENDADO (SHORT {'CALL' if is_call else 'PUT'})"
-            color = "#F43F5E"  # Rose
-            if edge_pct < -12.0:
-                signal_strength = "MUY FUERTE"
-            elif edge_pct < -7.0:
-                signal_strength = "FUERTE"
-            else:
-                signal_strength = "MODERADA"
-
-            rationale_items.append(f"La prima cotiza con un SOBREPRECIO del {abs(edge_pct):.2f}% sobre el valor teorico justo.")
-            if iv is not None:
-                if vol_spread > 0.02:
-                    rationale_items.append(f"Volatilidad Implicita ({iv*100:.1f}%) > Volatilidad Historica ({hv*100:.1f}%): Prima inflada, oportunidad de capturar theta.")
-                else:
-                    rationale_items.append(f"Volatilidad Implicita cotiza en {iv*100:.1f}%.")
-            rationale_items.append(f"Estrategia sugerida: Vender la prima para cobrar valor tiempo o evitar compra directa.")
-
+        if not has_market:
+            action = f"PRIMA JUSTA {option_type.upper()}"
+            color = "#38BDF8"
+        elif abs(diff_pct) <= edge_threshold_pct:
+            action = f"PRIMA EN PARIDAD {option_type.upper()}"
+            color = "#38BDF8"
+        elif diff > 0:
+            action = f"PRIMA SOBRE LA PAR (+{abs(diff_pct):.1f}%)"
+            color = "#F59E0B"
         else:
-            action = "PRECIO JUSTO / MANTENER"
-            color = "#38BDF8"  # Sky
-            signal_strength = "EQUILIBRADO"
-            rationale_items.append(f"La prima de mercado esta alineada al valor teorico (desvio minimo de {edge_pct:+.2f}%).")
-            rationale_items.append("El mercado refleja eficientemente la volatilidad esperada sin arbitraje evidente.")
+            action = f"PRIMA BAJO LA PAR (-{abs(diff_pct):.1f}%)"
+            color = "#10B981"
+
+        details = [
+            f"Valor Teórico Calculado (Prima Justa): ${theoretical_price:.4f}.",
+            f"Probabilidad de Ejercicio ITM: {prob_itm:.1f}%."
+        ]
+        if has_market:
+            details.append(f"Precio de Mercado: ${mkt_p:.2f} (Diferencia: {diff:+.2f}).")
+            if iv is not None:
+                details.append(f"Volatilidad Implícita: {iv*100:.1f}% vs Histórica: {hv*100:.1f}%.")
 
         return {
             "action": action,
-            "signal_strength": signal_strength,
+            "signal_strength": "PARIDAD TEÓRICA" if abs(diff_pct) <= edge_threshold_pct else "DESVÍO DE MERCADO",
             "color": color,
-            "edge_pct": round(float(edge_pct), 2),
+            "edge_pct": round(float(diff_pct), 2),
             "theoretical_price": round(float(theoretical_price), 4),
-            "market_price": round(float(market_price), 4),
+            "market_price": round(float(mkt_p), 4),
             "prob_itm_pct": round(float(prob_itm), 1),
             "vol_spread_pct": round(float(vol_spread * 100), 2),
-            "rationale": rationale_items
+            "rationale": details
         }

@@ -162,7 +162,7 @@ def run_econometric_audit(
         except Exception:
             vif_val = 1.0
         
-        status = "Baja / Saludable (VIF < 5)" if vif_val < 5.0 else ("Moderada (5 <= VIF < 10)" if vif_val < 10.0 else "Severa (VIF >= 10)")
+        status = "Baja / Ortogonalidad admisible (VIF < 5)" if vif_val < 5.0 else ("Moderada (5 <= VIF < 10)" if vif_val < 10.0 else "Severa / Multicolinealidad crítica (VIF >= 10)")
         vif_results.append({
             "variable": var_name,
             "vif": round(vif_val, 2),
