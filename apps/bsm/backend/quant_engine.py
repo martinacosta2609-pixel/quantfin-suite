@@ -1,17 +1,68 @@
 """
 QUANT ENGINE - Black-Scholes-Merton & Black-76 Model
 Calculo de precios teoricos, Griegas analiticas, Volatilidad Implicita y Estimadores Econometricos.
+
+Nota de diseno: Black-76 es exactamente BSM con S = F (precio del futuro) y costo de acarreo
+cero, es decir, con rendimiento de conveniencia q = r. Por eso ambos modelos comparten un unico
+nucleo de calculo (_core) y solo difieren en el q efectivo y en la definicion de Rho.
 """
 
+import math
 import numpy as np
-from scipy.stats import norm
+from scipy.special import ndtr
 from scipy.optimize import brentq
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
+
+_INV_SQRT_2PI = 1.0 / math.sqrt(2.0 * math.pi)
+_EPS = 1e-7
+
+
+def _pdf(x):
+    """Densidad normal estandar (mas rapida que scipy.stats.norm.pdf para escalares y arrays)."""
+    return np.exp(-0.5 * x * x) * _INV_SQRT_2PI
 
 
 class QuantEngine:
+    # ------------------------------------------------------------------ nucleo
     @staticmethod
+    def _q_eff(model: str, r: float, q: float) -> float:
+        """Black-76 equivale a BSM con q = r (futuro: sin costo de acarreo)."""
+        return r if model.lower() == "black76" else q
+
+    @staticmethod
+    def _d1_d2(S, K, T, r, sigma, q):
+        sqrt_T = math.sqrt(T)
+        d1 = (np.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt_T)
+        return d1, d1 - sigma * sqrt_T
+
+    @classmethod
+    def _price(cls, S, K, T, r, sigma, q, is_call):
+        """
+        Prima teorica. S puede ser un escalar o un ndarray (curvas de payoff vectorizadas);
+        K, T, r, sigma y q son escalares.
+        """
+        if T <= _EPS:
+            intrinsic = (S - K) if is_call else (K - S)
+            return np.maximum(0.0, intrinsic)
+
+        disc_q = math.exp(-q * T)
+        disc_r = math.exp(-r * T)
+
+        if sigma <= _EPS:
+            fwd = S * disc_q - K * disc_r
+            return np.maximum(0.0, fwd if is_call else -fwd)
+
+        d1, d2 = cls._d1_d2(S, K, T, r, sigma, q)
+        if is_call:
+            price = S * disc_q * ndtr(d1) - K * disc_r * ndtr(d2)
+        else:
+            price = K * disc_r * ndtr(-d2) - S * disc_q * ndtr(-d1)
+        return np.maximum(0.0, price)
+
+    # --------------------------------------------------------------- precios
+    @classmethod
     def bsm_price(
+        cls,
         S: float,
         K: float,
         T: float,
@@ -21,36 +72,13 @@ class QuantEngine:
         option_type: str = "call"
     ) -> float:
         """
-        Calcula el precio teorico segun el modelo Black-Scholes-Merton (1973) con dividendo/acarreo continuo q.
+        Precio teorico segun Black-Scholes-Merton (1973) con dividendo/acarreo continuo q.
         """
-        if T <= 1e-7:
-            # Vencimiento inmediato
-            if option_type.lower() == "call":
-                return max(0.0, S - K)
-            else:
-                return max(0.0, K - S)
-        
-        if sigma <= 1e-7:
-            # Volatilidad cero
-            discount_S = S * np.exp(-q * T)
-            discount_K = K * np.exp(-r * T)
-            if option_type.lower() == "call":
-                return max(0.0, discount_S - discount_K)
-            else:
-                return max(0.0, discount_K - discount_S)
+        return float(cls._price(S, K, T, r, sigma, q, option_type.lower() == "call"))
 
-        d1 = (np.log(S / K) + (r - q + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-
-        if option_type.lower() == "call":
-            price = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-        else:
-            price = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
-
-        return max(0.0, float(price))
-
-    @staticmethod
+    @classmethod
     def black76_price(
+        cls,
         F: float,
         K: float,
         T: float,
@@ -59,33 +87,28 @@ class QuantEngine:
         option_type: str = "call"
     ) -> float:
         """
-        Calcula el precio teorico segun el modelo Black-76 (Fischer Black 1976),
-        el estandar oficial en CME, NYMEX, CBOT e ICE para opciones sobre contratos de futuros de commodities.
+        Precio teorico segun Black-76 (Fischer Black, 1976), el estandar en CME, NYMEX,
+        CBOT e ICE para opciones sobre futuros: BSM con S = F y q = r.
         """
-        if T <= 1e-7:
-            if option_type.lower() == "call":
-                return max(0.0, F - K)
-            else:
-                return max(0.0, K - F)
+        return float(cls._price(F, K, T, r, sigma, r, option_type.lower() == "call"))
 
-        if sigma <= 1e-7:
-            discount = np.exp(-r * T)
-            if option_type.lower() == "call":
-                return max(0.0, discount * (F - K))
-            else:
-                return max(0.0, discount * (K - F))
+    @classmethod
+    def price_curve(
+        cls,
+        spots: np.ndarray,
+        K: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float = 0.0,
+        model: str = "black76",
+        option_type: str = "call"
+    ) -> np.ndarray:
+        """Prima teorica para un vector de precios del subyacente (una sola pasada vectorizada)."""
+        spots = np.asarray(spots, dtype=float)
+        return cls._price(spots, K, T, r, sigma, cls._q_eff(model, r, q), option_type.lower() == "call")
 
-        d1 = (np.log(F / K) + 0.5 * (sigma ** 2) * T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        discount = np.exp(-r * T)
-
-        if option_type.lower() == "call":
-            price = discount * (F * norm.cdf(d1) - K * norm.cdf(d2))
-        else:
-            price = discount * (K * norm.cdf(-d2) - F * norm.cdf(-d1))
-
-        return max(0.0, float(price))
-
+    # ---------------------------------------------------------------- griegas
     @classmethod
     def calculate_greeks(
         cls,
@@ -99,18 +122,17 @@ class QuantEngine:
         option_type: str = "call"
     ) -> Dict[str, float]:
         """
-        Calcula las Griegas analiticas completas:
+        Griegas analiticas completas:
         - Delta (dPrice / dUnderlying)
         - Gamma (d2Price / dUnderlying^2)
-        - Vega  (dPrice / dSigma, expresado por punto porcentual de vol: 1%)
-        - Theta (dPrice / dt, expresado por dia calendario: Theta/365)
-        - Rho   (dPrice / dr, expresado por punto porcentual de tasa: 1%)
+        - Vega  (dPrice / dSigma, por punto porcentual de vol: 1%)
+        - Theta (dPrice / dt, por dia calendario: Theta/365)
+        - Rho   (dPrice / dr, por punto porcentual de tasa: 1%)
         """
         is_call = option_type.lower() == "call"
         use_black76 = model.lower() == "black76"
 
-        if T <= 1e-7 or sigma <= 1e-7:
-            # Caso limite
+        if T <= _EPS or sigma <= _EPS:
             intrinsic = (S_or_F - K) if is_call else (K - S_or_F)
             in_the_money = intrinsic > 0
             return {
@@ -123,73 +145,44 @@ class QuantEngine:
                 "d2": 0.0
             }
 
-        sqrt_T = np.sqrt(T)
+        S = S_or_F
+        q_eff = cls._q_eff(model, r, q)
+        sqrt_T = math.sqrt(T)
+        d1, d2 = cls._d1_d2(S, K, T, r, sigma, q_eff)
+        disc_r = math.exp(-r * T)
+        disc_q = math.exp(-q_eff * T)
+        pdf_d1 = float(_pdf(d1))
+        n_d1, n_d2 = float(ndtr(d1)), float(ndtr(d2))
+        n_md1, n_md2 = 1.0 - n_d1, 1.0 - n_d2
+
+        delta = disc_q * n_d1 if is_call else -disc_q * n_md1
+        gamma = disc_q * pdf_d1 / (S * sigma * sqrt_T)
+        vega_total = S * disc_q * pdf_d1 * sqrt_T
+
+        term1 = -(S * disc_q * pdf_d1 * sigma) / (2.0 * sqrt_T)
+        if is_call:
+            theta_annual = term1 - r * K * disc_r * n_d2 + q_eff * S * disc_q * n_d1
+        else:
+            theta_annual = term1 + r * K * disc_r * n_md2 - q_eff * S * disc_q * n_md1
 
         if use_black76:
-            F = S_or_F
-            d1 = (np.log(F / K) + 0.5 * (sigma ** 2) * T) / (sigma * sqrt_T)
-            d2 = d1 - sigma * sqrt_T
-            discount = np.exp(-r * T)
-            pdf_d1 = norm.pdf(d1)
-
-            # Delta en Black-76
-            delta = discount * norm.cdf(d1) if is_call else -discount * norm.cdf(-d1)
-            # Gamma en Black-76
-            gamma = (discount * pdf_d1) / (F * sigma * sqrt_T)
-            # Vega en Black-76 (anual y por 1% vol)
-            vega_total = discount * F * pdf_d1 * sqrt_T
-            vega_1pct = vega_total / 100.0
-            # Theta en Black-76 (por dia)
-            term1 = -(discount * F * pdf_d1 * sigma) / (2.0 * sqrt_T)
-            if is_call:
-                theta_annual = term1 - r * discount * (F * norm.cdf(d1) - K * norm.cdf(d2))
-            else:
-                theta_annual = term1 - r * discount * (K * norm.cdf(-d2) - F * norm.cdf(-d1))
-            theta_1day = theta_annual / 365.0
-            # Rho en Black-76 (por 1% tasa)
-            price = cls.black76_price(F, K, T, r, sigma, option_type)
+            # El futuro F queda fijo cuando cambia r: solo actua el descuento -> Rho = -T * Prima
+            price = (S * disc_q * n_d1 - K * disc_r * n_d2) if is_call else (K * disc_r * n_md2 - S * disc_q * n_md1)
             rho_annual = -T * price
-            rho_1pct = rho_annual / 100.0
-
         else:
-            S = S_or_F
-            d1 = (np.log(S / K) + (r - q + 0.5 * sigma ** 2) * T) / (sigma * sqrt_T)
-            d2 = d1 - sigma * sqrt_T
-            discount_r = np.exp(-r * T)
-            discount_q = np.exp(-q * T)
-            pdf_d1 = norm.pdf(d1)
-
-            # Delta BSM
-            delta = discount_q * norm.cdf(d1) if is_call else -discount_q * norm.cdf(-d1)
-            # Gamma BSM
-            gamma = (discount_q * pdf_d1) / (S * sigma * sqrt_T)
-            # Vega BSM
-            vega_total = S * discount_q * pdf_d1 * sqrt_T
-            vega_1pct = vega_total / 100.0
-            # Theta BSM
-            term1 = -(S * discount_q * pdf_d1 * sigma) / (2.0 * sqrt_T)
-            if is_call:
-                theta_annual = term1 - r * K * discount_r * norm.cdf(d2) + q * S * discount_q * norm.cdf(d1)
-            else:
-                theta_annual = term1 + r * K * discount_r * norm.cdf(-d2) - q * S * discount_q * norm.cdf(-d1)
-            theta_1day = theta_annual / 365.0
-            # Rho BSM
-            if is_call:
-                rho_annual = K * T * discount_r * norm.cdf(d2)
-            else:
-                rho_annual = -K * T * discount_r * norm.cdf(-d2)
-            rho_1pct = rho_annual / 100.0
+            rho_annual = K * T * disc_r * n_d2 if is_call else -K * T * disc_r * n_md2
 
         return {
             "delta": float(delta),
             "gamma": float(gamma),
-            "vega": float(vega_1pct),
-            "theta": float(theta_1day),
-            "rho": float(rho_1pct),
+            "vega": float(vega_total / 100.0),
+            "theta": float(theta_annual / 365.0),
+            "rho": float(rho_annual / 100.0),
             "d1": float(d1),
             "d2": float(d2)
         }
 
+    # ------------------------------------------------------ volatilidad implicita
     @classmethod
     def calculate_implied_volatility(
         cls,
@@ -206,65 +199,53 @@ class QuantEngine:
         tol: float = 1e-5
     ) -> Optional[float]:
         """
-        Resuelve la Volatilidad Implicita (IV) por Newton-Raphson acelerado con fallback a Brentq.
+        Resuelve la Volatilidad Implicita (IV) por Newton-Raphson con fallback a Brentq.
         """
-        if market_price <= 0.0 or T <= 1e-7:
+        if market_price <= 0.0 or T <= _EPS:
             return None
 
-        # Limites de arbitraje intrinseco
         is_call = option_type.lower() == "call"
-        use_black76 = model.lower() == "black76"
-        discount = np.exp(-r * T)
+        q_eff = cls._q_eff(model, r, q)
+        disc_r = math.exp(-r * T)
+        disc_q = math.exp(-q_eff * T)
 
-        if use_black76:
-            intrinsic = discount * max(0.0, (S_or_F - K) if is_call else (K - S_or_F))
-        else:
-            discount_q = np.exp(-q * T)
-            intrinsic = max(0.0, (S_or_F * discount_q - K * discount) if is_call else (K * discount - S_or_F * discount_q))
-
+        # Limite de no-arbitraje: la prima no puede ser menor que el valor intrinseco descontado
+        fwd = S_or_F * disc_q - K * disc_r
+        intrinsic = max(0.0, fwd if is_call else -fwd)
         if market_price < intrinsic - 1e-4:
             return None
 
-        def objective(sigma):
-            if use_black76:
-                theo = cls.black76_price(S_or_F, K, T, r, sigma, option_type)
-            else:
-                theo = cls.bsm_price(S_or_F, K, T, r, sigma, q, option_type)
-            return theo - market_price
+        def objective(sig):
+            return float(cls._price(S_or_F, K, T, r, sig, q_eff, is_call)) - market_price
 
-        # Intento 1: Newton-Raphson rapido
+        # Intento 1: Newton-Raphson (la vega analitica se calcula directamente, sin recalcular griegas)
         sigma = initial_guess
+        sqrt_T = math.sqrt(T)
         for _ in range(max_iter):
             price_diff = objective(sigma)
             if abs(price_diff) < tol:
                 return float(sigma)
 
-            greeks = cls.calculate_greeks(S_or_F, K, T, r, sigma, q, model, option_type)
-            vega = greeks["vega"] * 100.0  # Volver a vega total
-
+            d1, _d2 = cls._d1_d2(S_or_F, K, T, r, sigma, q_eff)
+            vega = S_or_F * disc_q * float(_pdf(d1)) * sqrt_T
             if abs(vega) < 1e-6:
                 break
 
-            step = price_diff / vega
-            sigma -= step
-
+            sigma -= price_diff / vega
             if sigma <= 0.001 or sigma > 8.0:
                 break
 
-        # Intento 2: Scipy Brentq robusto garantizado
+        # Intento 2: Brentq (convergencia garantizada si hay cambio de signo en [0.1%, 500%])
         try:
-            low = 0.001
-            high = 5.0
-            f_low = objective(low)
-            f_high = objective(high)
-            if f_low * f_high < 0:
-                sol = brentq(objective, low, high, xtol=tol)
-                return float(sol)
+            low, high = 0.001, 5.0
+            if objective(low) * objective(high) < 0:
+                return float(brentq(objective, low, high, xtol=tol))
         except Exception:
             pass
 
         return None
 
+    # ------------------------------------------------- estimadores de volatilidad
     @staticmethod
     def estimate_historical_volatility(prices_close: np.ndarray, period: int = 252) -> float:
         """
@@ -280,12 +261,12 @@ class QuantEngine:
     def estimate_parkinson_volatility(prices_high: np.ndarray, prices_low: np.ndarray, period: int = 252) -> float:
         """
         Estimador de Volatilidad de Parkinson (1980) basado en rango High-Low.
-        5 veces mas eficiente estadisticamente que Close-to-Close.
+        ~5 veces mas eficiente estadisticamente que Close-to-Close.
         """
         n = len(prices_high)
         if n < 2 or len(prices_low) != n:
             return 0.20
-        
+
         valid = (prices_high > 0) & (prices_low > 0) & (prices_high >= prices_low)
         h = prices_high[valid]
         l = prices_low[valid]
@@ -306,20 +287,19 @@ class QuantEngine:
         period: int = 252
     ) -> float:
         """
-        Estimador de Garman-Klass (1980): incluye saltos de apertura y movimiento intradia.
-        8 veces mas eficiente que Close-to-Close.
+        Estimador de Garman-Klass (1980): usa Open, High, Low y Close de cada dia.
+        ~7-8 veces mas eficiente que Close-to-Close (asume que no hay saltos entre cierre y apertura).
         """
         n = len(prices_close)
         if n < 2:
             return 0.20
-        
+
         valid = (prices_open > 0) & (prices_high > 0) & (prices_low > 0) & (prices_close > 0)
         o = prices_open[valid]
         h = prices_high[valid]
         l = prices_low[valid]
         c = prices_close[valid]
-        n_val = len(c)
-        if n_val < 2:
+        if len(c) < 2:
             return 0.20
 
         term1 = 0.5 * (np.log(h / l) ** 2)
@@ -329,6 +309,7 @@ class QuantEngine:
             var_daily = 0.0
         return float(np.sqrt(var_daily * period))
 
+    # --------------------------------------------------------- evaluacion de prima
     @classmethod
     def evaluate_fair_premium(
         cls,
@@ -347,21 +328,21 @@ class QuantEngine:
         proporcionando descomposicion de valor intrinseco/temporal sin emitir recomendaciones de compra o venta.
         """
         is_call = option_type.lower() == "call"
-        
+
         # Descomposicion de la prima teorica justa
         intrinsic_val = max(0.0, (underlying_price - strike) if is_call else (strike - underlying_price))
         time_val = max(0.0, theoretical_price - intrinsic_val)
 
         # Probabilidad neutral al riesgo de finalizar ITM
-        prob_itm = float(norm.cdf(d2) if is_call else norm.cdf(-d2)) * 100.0
+        prob_itm = float(ndtr(d2) if is_call else ndtr(-d2)) * 100.0
 
         # Comparacion con precio de mercado observado
         has_market = market_price is not None and market_price > 0.001
         mkt_p = float(market_price) if has_market else theoretical_price
-        
+
         diff = mkt_p - theoretical_price
         diff_pct = (diff / theoretical_price * 100.0) if theoretical_price > 0.001 else 0.0
-        
+
         # Evaluacion de paridad respecto al modelo teorico
         if not has_market:
             valuation_status = "Prima Justa Teórica"
@@ -394,6 +375,7 @@ class QuantEngine:
         return {
             "theoretical_price": round(float(theoretical_price), 4),
             "market_price": round(float(mkt_p), 4),
+            "has_market_price": bool(has_market),
             "intrinsic_value": round(float(intrinsic_val), 4),
             "time_value": round(float(time_val), 4),
             "diff_amount": round(float(diff), 4),
@@ -426,12 +408,12 @@ class QuantEngine:
         is_call = option_type.lower() == "call"
         has_market = market_price > 0.001
         mkt_p = float(market_price) if has_market else theoretical_price
-        
+
         diff = mkt_p - theoretical_price
         diff_pct = (diff / theoretical_price * 100.0) if theoretical_price > 0.001 else 0.0
-        
+
         vol_spread = (iv - hv) if (iv is not None) else 0.0
-        prob_itm = float(norm.cdf(d2) if is_call else norm.cdf(-d2)) * 100.0
+        prob_itm = float(ndtr(d2) if is_call else ndtr(-d2)) * 100.0
 
         if not has_market:
             action = f"PRIMA JUSTA {option_type.upper()}"

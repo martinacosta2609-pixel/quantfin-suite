@@ -1262,3 +1262,41 @@ body {
   color: var(--text-main);
   font-family: var(--font-mono);
 }
+
+/* ========================================================
+   AYUDAS INFORMATIVAS (glosario.js)
+   ======================================================== */
+[data-info] {
+  cursor: help;
+  text-decoration: underline dotted var(--text-dim);
+  text-underline-offset: 3px;
+}
+th.sortable[data-info] { cursor: pointer; }
+[data-info]:focus-visible { outline: 1px solid var(--primary-cyan); outline-offset: 2px; }
+
+.info-tip {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  padding: 12px 14px;
+  background: var(--bg-card-high);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--primary-cyan);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  pointer-events: none;
+}
+.info-tip-title { font-size: 13px; font-weight: 700; color: var(--primary-cyan); margin-bottom: 6px; }
+.info-tip-text { color: var(--text-muted); margin-top: 4px; }
+.info-tip-text strong { color: var(--text-main); font-weight: 600; }

@@ -74,16 +74,9 @@ class FamaFrenchBacktester:
         t0_date_str = train_df["Date"].iloc[-1].strftime("%Y-%m-%d")
 
         # Project out-of-sample returns using factor realizations + alpha
-        test_pred_returns = []
-        for _, row in test_df.iterrows():
-            rf_t = float(row["RF"])
-            pred_excess = alpha_daily
-            for f in factors:
-                pred_excess += betas[f] * float(row[f])
-            pred_return = pred_excess + rf_t
-            test_pred_returns.append(pred_return)
-
-        test_df["Pred_Return"] = test_pred_returns
+        beta_vec = np.array([betas[f] for f in factors], dtype=float)
+        pred_excess = alpha_daily + test_df[factors].to_numpy(dtype=float) @ beta_vec
+        test_df["Pred_Return"] = pred_excess + test_df["RF"].to_numpy(dtype=float)
         test_df["Pred_Price"] = p0 * (1.0 + test_df["Pred_Return"]).cumprod()
         test_df["Actual_Price"] = test_df["Close"]
 

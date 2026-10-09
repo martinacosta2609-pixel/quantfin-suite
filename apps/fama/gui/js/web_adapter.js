@@ -33,11 +33,11 @@
                     });
                     return await res.json();
                 },
-                analyze_sector: async function(sectorId, model, period) {
+                analyze_sector: async function(sectorId, model, period, forceRefresh) {
                     const res = await fetch('/api/fama/analyze_sector', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ sector_id: sectorId, model_type: model, period: period })
+                        body: JSON.stringify({ sector_id: sectorId, model_type: model, period: period, force_refresh: !!forceRefresh })
                     });
                     return await res.json();
                 }

@@ -269,7 +269,7 @@ SOVEREIGN_BONDS = {
     # BOPREALES (Banco Central de la República Argentina)
     # ----------------------------------------------------
     "BPOD7": {
-        "name": "Bopreal Serie 1 (BCRA)",
+        "name": "Bopreal Serie 1 Strip D (BCRA)",
         "isin": "ARBCRA320019",
         "currency": "USD",
         "type": "Bopreal BCRA",
@@ -286,6 +286,40 @@ SOVEREIGN_BONDS = {
             ("2027-04-30", 0.05, 0.0),
             ("2027-10-31", 0.05, 100.0),
         ]
+    },
+    "BPD7": {
+        "name": "Bopreal Serie 1 Strip D",
+        "ref": "BPOD7"
+    },
+    "BPOC7": {
+        "name": "Bopreal Serie 1 Strip C (BCRA)",
+        "ref": "BPOD7"
+    },
+    "BPC7": {
+        "name": "Bopreal Serie 1 Strip C",
+        "ref": "BPOD7"
+    },
+    "BPOA7": {
+        "name": "Bopreal Serie 1 Strip A (BCRA)",
+        "ref": "BPOD7"
+    },
+    "BPA7": {
+        "name": "Bopreal Serie 1 Strip A",
+        "ref": "BPOD7"
+    },
+    # Strip B is BPOB7 (vence 2027-10-31). BPOB8 is another series (BYMA: vence 2028-10-31) and
+    # was wrongly mapped here, which produced a fake ~16% TIR for it.
+    "BPOB7": {
+        "name": "Bopreal Serie 1 Strip B (BCRA)",
+        "ref": "BPOD7"
+    },
+    "BPB7": {
+        "name": "Bopreal Serie 1 Strip B",
+        "ref": "BPOD7"
+    },
+    "BPO27": {
+        "name": "Bopreal Serie 1 (BCRA)",
+        "ref": "BPOD7"
     },
     "BPJ25": {
         "name": "Bopreal Serie 2 (BCRA)",
@@ -346,7 +380,23 @@ SOVEREIGN_BONDS = {
         "coupon_rate": 0.02,
         "frequency": 2,
         "is_cer": True,
-        "base_cer": 23.47  # Reference base CER index
+        # CER base = CER del 21-08-2020 (10 días hábiles antes de la emisión 04-09-2020).
+        # Fuente: BCRA API v4 monetarias/30. El valor previo (23.47) subvaluaba el VT un 4.1%.
+        "base_cer": 22.54395108959,
+        "schedule": [
+            ("2021-05-09", 0.02, 0.0),
+            ("2021-11-09", 0.02, 0.0),
+            ("2022-05-09", 0.02, 0.0),
+            ("2022-11-09", 0.02, 0.0),
+            ("2023-05-09", 0.02, 0.0),
+            ("2023-11-09", 0.02, 0.0),
+            ("2024-05-09", 0.02, 0.0),
+            ("2024-11-09", 0.02, 20.0),
+            ("2025-05-09", 0.02, 20.0),
+            ("2025-11-09", 0.02, 20.0),
+            ("2026-05-09", 0.02, 20.0),
+            ("2026-11-09", 0.02, 20.0),
+        ]
     },
     "TX28": {
         "name": "Boncer 2028 (CER + 2.25%)",
@@ -358,7 +408,56 @@ SOVEREIGN_BONDS = {
         "coupon_rate": 0.0225,
         "frequency": 2,
         "is_cer": True,
-        "base_cer": 23.47
+        # Misma emisión que TX26: CER del 21-08-2020 (BCRA API v4 monetarias/30).
+        "base_cer": 22.54395108959,
+        "schedule": [
+            ("2021-05-09", 0.0225, 0.0),
+            ("2021-11-09", 0.0225, 0.0),
+            ("2022-05-09", 0.0225, 0.0),
+            ("2022-11-09", 0.0225, 0.0),
+            ("2023-05-09", 0.0225, 0.0),
+            ("2023-11-09", 0.0225, 0.0),
+            ("2024-05-09", 0.0225, 10.0),
+            ("2024-11-09", 0.0225, 10.0),
+            ("2025-05-09", 0.0225, 10.0),
+            ("2025-11-09", 0.0225, 10.0),
+            ("2026-05-09", 0.0225, 10.0),
+            ("2026-11-09", 0.0225, 10.0),
+            ("2027-05-09", 0.0225, 10.0),
+            ("2027-11-09", 0.0225, 10.0),
+            ("2028-05-09", 0.0225, 10.0),
+            ("2028-11-09", 0.0225, 10.0),
+        ]
+    },
+    "TZX28": {
+        "name": "Boncer Cero Cupón (Jun 2028)",
+        "currency": "ARS",
+        "type": "Boncer Cero Cupón",
+        "law": "Argentina",
+        "issue_date": "2024-03-01",
+        "maturity_date": "2028-06-30",
+        "frequency": 1,
+        "is_cer": True,
+        # base_cer intentionally omitted: the previous value (558.12) was a placeholder,
+        # not the prospectus CER base. Without it the engine refuses to value the bond
+        # (it yielded parity 236% / TIR -39%). Add the official base CER to re-enable it.
+        "schedule": [
+            ("2028-06-30", 0.0, 100.0)
+        ]
+    },
+    "TZXD8": {
+        "name": "Boncer Cero Cupón (Dic 2028)",
+        "currency": "ARS",
+        "type": "Boncer Cero Cupón",
+        "law": "Argentina",
+        "issue_date": "2024-04-01",
+        "maturity_date": "2028-12-15",
+        "frequency": 1,
+        "is_cer": True,
+        # base_cer intentionally omitted (previous 625.00 was a placeholder). See TZX28.
+        "schedule": [
+            ("2028-12-15", 0.0, 100.0)
+        ]
     },
     "T2X5": {
         "name": "Boncer 2025 (CER + 4.0%)",
@@ -370,7 +469,15 @@ SOVEREIGN_BONDS = {
         "coupon_rate": 0.04,
         "frequency": 2,
         "is_cer": True,
-        "base_cer": 48.02
+        "base_cer": 48.02,
+        "schedule": [
+            ("2022-12-30", 0.04, 0.0),
+            ("2023-06-30", 0.04, 0.0),
+            ("2023-12-30", 0.04, 0.0),
+            ("2024-06-30", 0.04, 0.0),
+            ("2024-12-30", 0.04, 0.0),
+            ("2025-06-30", 0.04, 100.0),
+        ]
     },
     "DICP": {
         "name": "Bono Descuento Pesos CER 2033",
@@ -382,7 +489,32 @@ SOVEREIGN_BONDS = {
         "coupon_rate": 0.0583,
         "frequency": 2,
         "is_cer": True,
-        "base_cer": 1.40
+        # base_cer intentionally omitted: 1.40 was a placeholder (BCRA publica CER 31-12-2003 = 1.4568)
+        # and this schedule ignores the interest capitalized until 2013, so the residual value is
+        # understated. Both errors offset by chance. Load the prospectus CER base + capitalized VR
+        # to re-enable it; until then the engine refuses to value it (see TZX28).
+        "schedule": [
+            ("2024-06-30", 0.0583, 5.0),
+            ("2024-12-31", 0.0583, 5.0),
+            ("2025-06-30", 0.0583, 5.0),
+            ("2025-12-31", 0.0583, 5.0),
+            ("2026-06-30", 0.0583, 5.0),
+            ("2026-12-31", 0.0583, 5.0),
+            ("2027-06-30", 0.0583, 5.0),
+            ("2027-12-31", 0.0583, 5.0),
+            ("2028-06-30", 0.0583, 5.0),
+            ("2028-12-31", 0.0583, 5.0),
+            ("2029-06-30", 0.0583, 5.0),
+            ("2029-12-31", 0.0583, 5.0),
+            ("2030-06-30", 0.0583, 5.0),
+            ("2030-12-31", 0.0583, 5.0),
+            ("2031-06-30", 0.0583, 5.0),
+            ("2031-12-31", 0.0583, 5.0),
+            ("2032-06-30", 0.0583, 5.0),
+            ("2032-12-31", 0.0583, 5.0),
+            ("2033-06-30", 0.0583, 5.0),
+            ("2033-12-31", 0.0583, 5.0),
+        ]
     }
 }
 

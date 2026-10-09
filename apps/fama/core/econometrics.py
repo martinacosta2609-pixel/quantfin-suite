@@ -8,7 +8,8 @@ from scipy import stats
 
 class EconometricDiagnostics:
     @staticmethod
-    def run_ols_with_diagnostics(y: pd.Series, X: pd.DataFrame, cov_type: str = "HAC", hac_maxlags: int = 5) -> dict:
+    def run_ols_with_diagnostics(y: pd.Series, X: pd.DataFrame, cov_type: str = "HAC", hac_maxlags: int = 5,
+                                 diagnostics: bool = True) -> dict:
         """
         Runs an econometric OLS regression and performs a comprehensive battery of diagnostic tests:
         - Robust standard errors (HAC / Newey-West)
@@ -17,6 +18,9 @@ class EconometricDiagnostics:
         - Jarque-Bera normality of residuals test
         - Variance Inflation Factors (VIF)
         - Residual series and distribution for charting
+
+        With diagnostics=False only the estimates and fit metrics are computed (used for batch
+        sector scans where the test battery and chart payloads are never displayed).
         """
         X_with_const = sm.add_constant(X)
         
@@ -68,6 +72,35 @@ class EconometricDiagnostics:
                 "ci_upper": ci_upper,
                 "significance": sig
             })
+
+        # Model fit metrics (cheap; always computed)
+        f_stat = float(results.fvalue) if hasattr(results, "fvalue") and results.fvalue is not None else 0.0
+        f_pvalue = float(results.f_pvalue) if hasattr(results, "f_pvalue") and results.f_pvalue is not None else 0.0
+        summary_metrics = {
+            "r_squared": float(results.rsquared),
+            "adj_r_squared": float(results.rsquared_adj),
+            "f_statistic": f_stat,
+            "f_pvalue": f_pvalue,
+            "n_obs": nobs,
+            "df_resid": df_resid,
+            "df_model": df_model,
+            "aic": float(results.aic),
+            "bic": float(results.bic),
+            "log_likelihood": float(results.llf),
+            "residual_std_error": float(np.std(residuals, ddof=df_model + 1)),
+            "cov_type": cov_type
+        }
+
+        if not diagnostics:
+            return {
+                "summary_metrics": summary_metrics,
+                "parameters": params_list,
+                "diagnostics": {},
+                "residuals_distribution": {},
+                "raw_residuals": residuals,
+                "raw_fitted": fitted_values,
+                "statsmodels_result": results
+            }
 
         # 2. Autocorrelation Tests
         dw_stat = float(durbin_watson(residuals))
@@ -138,25 +171,8 @@ class EconometricDiagnostics:
         normal_density = stats.norm.pdf(bin_centers, res_mean, res_std) if res_std > 0 else []
         normal_counts = [float(d * len(residuals) * (bin_edges[1] - bin_edges[0])) for d in normal_density]
 
-        # 7. Model Fit Metrics
-        f_stat = float(results.fvalue) if hasattr(results, "fvalue") and results.fvalue is not None else 0.0
-        f_pvalue = float(results.f_pvalue) if hasattr(results, "f_pvalue") and results.f_pvalue is not None else 0.0
-
         return {
-            "summary_metrics": {
-                "r_squared": float(results.rsquared),
-                "adj_r_squared": float(results.rsquared_adj),
-                "f_statistic": f_stat,
-                "f_pvalue": f_pvalue,
-                "n_obs": nobs,
-                "df_resid": df_resid,
-                "df_model": df_model,
-                "aic": float(results.aic),
-                "bic": float(results.bic),
-                "log_likelihood": float(results.llf),
-                "residual_std_error": float(np.std(residuals, ddof=df_model + 1)),
-                "cov_type": cov_type
-            },
+            "summary_metrics": summary_metrics,
             "parameters": params_list,
             "diagnostics": {
                 "durbin_watson": {

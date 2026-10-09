@@ -67,6 +67,7 @@ class ValuationEngine:
         dividend_yield = 0.0
         gordon_value = None
         if stock_info:
+            # dividendYield llega normalizado como fracción (0.0032 = 0,32 %) desde DataFetcher
             dividend_yield = stock_info.get("dividendYield") or 0.0
             if dividend_yield > 0.005:
                 # Sustainable long-term growth rate assumed at 2.5% (approx inflation / GDP)

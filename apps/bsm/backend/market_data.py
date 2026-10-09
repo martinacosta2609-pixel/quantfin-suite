@@ -3,14 +3,19 @@ MARKET DATA MODULE - Official US and European Commodity Feeds
 Conexion con feeds de mercado (CME, NYMEX, CBOT, ICE Europe, Euronext)
 a traves de tickers oficiales, tasas libres de riesgo (Treasury T-Bills)
 y cadenas de opciones en tiempo real e historicas.
+
+Optimizaciones: el historial OHLCV de cada ticker se descarga UNA sola vez y se comparte entre
+cotizacion, grafico, cadena de opciones y backtest; las cadenas de opciones tienen cache TTL; y las
+fallas de red se recuerdan unos segundos para no repetir llamadas lentas en cada clic.
 """
 
+import math
 import time
 import datetime
-import numpy as np
+import threading
 import pandas as pd
 import yfinance as yf
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from backend.quant_engine import QuantEngine
 
 
@@ -130,44 +135,100 @@ COMMODITY_CATALOG = [
     }
 ]
 
+_CATALOG_BY_ID = {c["id"]: c for c in COMMODITY_CATALOG}
+
+# TTLs (segundos)
+_TTL_QUOTE = 60
+_TTL_HISTORY = 300
+_TTL_CHAIN = 60
+_TTL_RATE = 1800
+_TTL_FAILURE = 45     # una falla de red se recuerda este tiempo para no reintentar en cada clic
+
+
+def _num(value, default: float = 0.0) -> float:
+    """float() tolerante a None / NaN (yfinance devuelve NaN en bid/ask fuera de horario)."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    return default if math.isnan(v) else v
+
 
 class MarketDataProvider:
     def __init__(self):
-        self._cache = {}
-        self._cache_expiry = {}
+        self._cache: Dict[str, Any] = {}
+        self._cache_expiry: Dict[str, float] = {}
+        self._lock = threading.Lock()
         self._default_r = 0.040  # 4.0% fallback
 
+    # ------------------------------------------------------------------ cache
+    def _cget(self, key: str):
+        with self._lock:
+            if key in self._cache and time.time() < self._cache_expiry.get(key, 0):
+                return self._cache[key]
+        return None
+
+    def _cset(self, key: str, value: Any, ttl: float):
+        with self._lock:
+            self._cache[key] = value
+            self._cache_expiry[key] = time.time() + ttl
+
+    # ----------------------------------------------------------- tasa libre riesgo
     def get_risk_free_rate(self) -> float:
         """
         Obtiene la tasa libre de riesgo oficial de mercado (13-week Treasury Bill ^IRX).
         """
-        now = time.time()
-        if "^IRX" in self._cache and now < self._cache_expiry.get("^IRX", 0):
-            return self._cache["^IRX"]
+        cached = self._cget("^IRX")
+        if cached is not None:
+            return cached
 
+        r = self._default_r
+        ttl = _TTL_FAILURE
         try:
-            irx = yf.Ticker("^IRX")
-            hist = irx.history(period="5d")
+            hist = yf.Ticker("^IRX").history(period="5d")
             if not hist.empty:
-                r = float(hist['Close'].iloc[-1]) / 100.0
-                if 0.0001 < r < 0.20:
-                    self._cache["^IRX"] = r
-                    self._cache_expiry["^IRX"] = now + 1800  # 30 min cache
-                    return r
+                candidate = float(hist['Close'].iloc[-1]) / 100.0
+                if 0.0001 < candidate < 0.20:
+                    r, ttl = candidate, _TTL_RATE
         except Exception:
             pass
 
-        return self._default_r
+        self._cset("^IRX", r, ttl)
+        return r
 
     def get_catalog(self) -> List[Dict[str, Any]]:
         return COMMODITY_CATALOG
 
     def get_commodity_by_id(self, comm_id: str) -> Optional[Dict[str, Any]]:
-        for item in COMMODITY_CATALOG:
-            if item["id"] == comm_id:
-                return item
-        return None
+        return _CATALOG_BY_ID.get(comm_id)
 
+    # -------------------------------------------------------------- historiales
+    def _fetch_ticker_history(self, ticker: str, period: str) -> pd.DataFrame:
+        """Descarga OHLCV de un ticker con cache TTL (y cache negativo ante fallas)."""
+        key = f"hist_{ticker}_{period}"
+        cached = self._cget(key)
+        if cached is not None:
+            return cached
+
+        df = pd.DataFrame()
+        try:
+            df = yf.Ticker(ticker).history(period=period)
+        except Exception:
+            df = pd.DataFrame()
+
+        self._cset(key, df, _TTL_HISTORY if not df.empty else _TTL_FAILURE)
+        return df
+
+    def _fetch_history(self, comm: Dict[str, Any], period: str, min_rows: int = 1) -> pd.DataFrame:
+        """Historial del futuro; si no hay datos suficientes, cae al ETF asociado."""
+        df = self._fetch_ticker_history(comm["future_ticker"], period)
+        if df.empty or len(df) < min_rows:
+            alt = self._fetch_ticker_history(comm["option_ticker"], period)
+            if not alt.empty:
+                return alt
+        return df
+
+    # ------------------------------------------------------------- cotizacion
     def get_live_quote(self, comm_id: str) -> Dict[str, Any]:
         """
         Obtiene la cotizacion en vivo del contrato de futuros del commodity
@@ -178,24 +239,18 @@ class MarketDataProvider:
             return {"error": "Commodity no encontrado"}
 
         future_ticker = comm["future_ticker"]
-        now = time.time()
         cache_key = f"quote_{future_ticker}"
+        cached = self._cget(cache_key)
+        if cached is not None:
+            return cached
 
-        if cache_key in self._cache and now < self._cache_expiry.get(cache_key, 0):
-            return self._cache[cache_key]
+        hist = self._fetch_history(comm, "1y")
+        if hist.empty:
+            fallback = self._generate_fallback_quote(comm)
+            self._cset(cache_key, fallback, _TTL_FAILURE)
+            return fallback
 
         try:
-            tk = yf.Ticker(future_ticker)
-            hist = tk.history(period="1y")
-
-            if hist.empty:
-                # Intentar con option_ticker de respaldo
-                tk = yf.Ticker(comm["option_ticker"])
-                hist = tk.history(period="1y")
-
-            if hist.empty:
-                return self._generate_fallback_quote(comm)
-
             last_close = float(hist['Close'].iloc[-1])
             prev_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else last_close
             change = last_close - prev_close
@@ -203,17 +258,17 @@ class MarketDataProvider:
 
             high_day = float(hist['High'].iloc[-1])
             low_day = float(hist['Low'].iloc[-1])
-            volume = float(hist['Volume'].iloc[-1]) if 'Volume' in hist else 0.0
+            volume = _num(hist['Volume'].iloc[-1]) if 'Volume' in hist else 0.0
 
-            # Estimaciones de Volatilidad
-            close_arr = hist['Close'].to_numpy()
-            high_arr = hist['High'].to_numpy()
-            low_arr = hist['Low'].to_numpy()
-            open_arr = hist['Open'].to_numpy()
+            # Estimaciones de Volatilidad (ventana de 60 ruedas)
+            close_arr = hist['Close'].to_numpy()[-60:]
+            high_arr = hist['High'].to_numpy()[-60:]
+            low_arr = hist['Low'].to_numpy()[-60:]
+            open_arr = hist['Open'].to_numpy()[-60:]
 
-            hv_cc = QuantEngine.estimate_historical_volatility(close_arr[-60:])
-            hv_park = QuantEngine.estimate_parkinson_volatility(high_arr[-60:], low_arr[-60:])
-            hv_gk = QuantEngine.estimate_garman_klass_volatility(open_arr[-60:], high_arr[-60:], low_arr[-60:], close_arr[-60:])
+            hv_cc = QuantEngine.estimate_historical_volatility(close_arr)
+            hv_park = QuantEngine.estimate_parkinson_volatility(high_arr, low_arr)
+            hv_gk = QuantEngine.estimate_garman_klass_volatility(open_arr, high_arr, low_arr, close_arr)
 
             r = self.get_risk_free_rate()
 
@@ -234,88 +289,78 @@ class MarketDataProvider:
                 "risk_free_rate": round(r * 100.0, 2),
                 "vol_realized_pct": round(hv_cc * 100.0, 2),
                 "vol_parkinson_pct": round(hv_park * 100.0, 2),
-                "vol_garman_klass_pct": round(hv_gk * 100.0, 2)
+                "vol_garman_klass_pct": round(hv_gk * 100.0, 2),
+                "is_offline": False
             }
-
-            self._cache[cache_key] = result
-            self._cache_expiry[cache_key] = now + 60  # 60s cache
+            self._cset(cache_key, result, _TTL_QUOTE)
             return result
 
-        except Exception as e:
-            return self._generate_fallback_quote(comm)
+        except Exception:
+            fallback = self._generate_fallback_quote(comm)
+            self._cset(cache_key, fallback, _TTL_FAILURE)
+            return fallback
 
     def get_historical_data(self, comm_id: str, period: str = "2y") -> pd.DataFrame:
         """
-        Descarga la serie historica OHLCV para backtesting y analisis econometrico.
+        Serie historica OHLCV para backtesting y analisis econometrico.
         """
         comm = self.get_commodity_by_id(comm_id)
         if not comm:
             return pd.DataFrame()
+        return self._fetch_history(comm, period, min_rows=50)
 
-        ticker = comm["future_ticker"]
-        cache_key = f"hist_{ticker}_{period}"
-        now = time.time()
-
-        if cache_key in self._cache and now < self._cache_expiry.get(cache_key, 0):
-            return self._cache[cache_key]
-
-        try:
-            tk = yf.Ticker(ticker)
-            df = tk.history(period=period)
-            if df.empty or len(df) < 50:
-                tk = yf.Ticker(comm["option_ticker"])
-                df = tk.history(period=period)
-
-            if not df.empty:
-                self._cache[cache_key] = df
-                self._cache_expiry[cache_key] = now + 300
-                return df
-        except Exception:
-            pass
-
-        return pd.DataFrame()
-
+    # ------------------------------------------------------- cadena de opciones
     def get_options_chain_data(self, comm_id: str, target_expiry: Optional[str] = None) -> Dict[str, Any]:
         """
-        Descarga la cadena de opciones oficial en tiempo real para el commodity seleccionado.
-        Usa el ETF de opciones liquido asociado (e.g. GLD para Oro, USO para WTI, etc.)
-        o el ticker directo, e indexa calls y puts con sus griegas y valores teoricos.
+        Descarga la cadena de opciones en tiempo real del ETF liquido asociado (GLD, USO, ...)
+        y la enriquece con BSM y griegas. Si no hay cadena disponible, genera una cadena
+        SIMULADA sobre el futuro con Black-76 (marcada con is_synthetic = True).
         """
         comm = self.get_commodity_by_id(comm_id)
         if not comm:
             return {"error": "Commodity invalido"}
 
-        opt_ticker = comm["option_ticker"]
-        future_ticker = comm["future_ticker"]
-        r = self.get_risk_free_rate()
+        cache_key = f"chain_{comm_id}_{target_expiry}"
+        cached = self._cget(cache_key)
+        if cached is not None:
+            return cached
 
+        r = self.get_risk_free_rate()
+        chain = self._build_live_chain(comm, target_expiry, r)
+        if chain is None:
+            chain = self._generate_futures_option_chain(comm, r, target_expiry)
+
+        self._cset(cache_key, chain, _TTL_CHAIN)
+        return chain
+
+    def _build_live_chain(self, comm: Dict[str, Any], target_expiry: Optional[str], r: float) -> Optional[Dict[str, Any]]:
+        opt_ticker = comm["option_ticker"]
         try:
             tk = yf.Ticker(opt_ticker)
             expiries = tk.options
-
             if not expiries:
-                # Si el ETF no tiene opciones abiertas en la API, generamos superficie de futuros
-                return self._generate_futures_option_chain(comm, r)
+                return None
 
             selected_expiry = target_expiry if (target_expiry and target_expiry in expiries) else expiries[0]
-
             chain = tk.option_chain(selected_expiry)
-            hist = tk.history(period="6mo")
-            current_spot = float(hist['Close'].iloc[-1]) if not hist.empty else 100.0
+            hist = self._fetch_ticker_history(opt_ticker, "6mo")
+            if hist.empty:
+                return None
+            current_spot = float(hist['Close'].iloc[-1])
 
-            # Calculo de tiempo al vencimiento T
+            # Tiempo al vencimiento T (en anios calendario)
             exp_date = pd.to_datetime(selected_expiry).date()
-            today = datetime.date.today()
-            days_to_exp = max(1, (exp_date - today).days)
+            days_to_exp = max(1, (exp_date - datetime.date.today()).days)
             T = days_to_exp / 365.0
 
-            # Volatilidad historica base
-            hv = QuantEngine.estimate_garman_klass_volatility(
-                hist['Open'].to_numpy()[-60:],
-                hist['High'].to_numpy()[-60:],
-                hist['Low'].to_numpy()[-60:],
-                hist['Close'].to_numpy()[-60:]
-            ) if len(hist) > 10 else 0.22
+            # Volatilidad historica base (60 ruedas) del propio ETF. Se usa Close-to-Close y NO Garman-Klass /
+            # Parkinson: un ETF solo cotiza en horario bursatil, asi que el grueso del movimiento ocurre en
+            # los gaps nocturnos (ej. GLD: GK ~13% vs Close-to-Close ~24%), que los estimadores intradiarios
+            # no ven. Los futuros operan ~23 h, por eso en ellos Garman-Klass si es adecuado.
+            if len(hist) > 10:
+                hv = QuantEngine.estimate_historical_volatility(hist['Close'].to_numpy()[-60:])
+            else:
+                hv = 0.22
 
             calls_list = self._process_chain_side(chain.calls, current_spot, T, r, hv, "call")
             puts_list = self._process_chain_side(chain.puts, current_spot, T, r, hv, "put")
@@ -324,6 +369,10 @@ class MarketDataProvider:
                 "commodity_id": comm["id"],
                 "underlying_name": comm["name"],
                 "ticker": opt_ticker,
+                "underlying_ticker": opt_ticker,
+                "is_synthetic": False,
+                "model": "bsm",
+                "vol_estimator": "close_to_close",
                 "spot_price": round(current_spot, 2),
                 "days_to_expiry": days_to_exp,
                 "T": round(T, 4),
@@ -334,9 +383,8 @@ class MarketDataProvider:
                 "calls": calls_list,
                 "puts": puts_list
             }
-
-        except Exception as e:
-            return self._generate_futures_option_chain(comm, r)
+        except Exception:
+            return None
 
     def _process_chain_side(
         self,
@@ -347,34 +395,30 @@ class MarketDataProvider:
         hv: float,
         option_type: str
     ) -> List[Dict[str, Any]]:
-        """Procesa y enriquece cada contrato de la cadena con BSM, Griegas y Recomendacion."""
+        """Procesa y enriquece cada contrato de la cadena con BSM, Griegas y evaluacion de prima."""
         items = []
-        is_call = option_type.lower() == "call"
 
         # Filtrar strikes alrededor de ATM (+- 35%)
-        lower_strike = S * 0.65
-        upper_strike = S * 1.35
-        filtered_df = df[(df['strike'] >= lower_strike) & (df['strike'] <= upper_strike)].copy()
+        filtered = df[(df['strike'] >= S * 0.65) & (df['strike'] <= S * 1.35)]
 
-        for _, row in filtered_df.iterrows():
-            K = float(row['strike'])
-            bid = float(row.get('bid', 0.0))
-            ask = float(row.get('ask', 0.0))
-            last = float(row.get('lastPrice', 0.0))
-            
+        # Prima teorica con la vol. historica como benchmark de precio justo (igual para todos los strikes)
+        for row in filtered.to_dict('records'):
+            K = _num(row.get('strike'))
+            bid = _num(row.get('bid'))
+            ask = _num(row.get('ask'))
+            last = _num(row.get('lastPrice'))
+
             mid = (bid + ask) / 2.0 if (bid > 0 and ask > 0) else last
-            mkt_iv = float(row.get('impliedVolatility', 0.0))
-            vol = int(row.get('volume', 0)) if not pd.isna(row.get('volume')) else 0
-            oi = int(row.get('openInterest', 0)) if not pd.isna(row.get('openInterest')) else 0
+            mkt_iv = _num(row.get('impliedVolatility'))
+            vol = int(_num(row.get('volume')))
+            oi = int(_num(row.get('openInterest')))
 
-            # Calcular valor teorico usando la volatilidad historica como benchmark de precio justo
             theo_price = QuantEngine.bsm_price(S, K, T, r, hv, 0.0, option_type)
-            
+
             # Griegas calculadas con volatilidad de mercado (o hv si no hay iv)
             calc_sigma = mkt_iv if (0.01 < mkt_iv < 3.0) else hv
             greeks = QuantEngine.calculate_greeks(S, K, T, r, calc_sigma, 0.0, "bsm", option_type)
 
-            # Evaluacion de Prima Justa sin recomendaciones de compra/venta
             eval_res = QuantEngine.evaluate_fair_premium(
                 market_price=mid,
                 theoretical_price=theo_price,
@@ -387,37 +431,52 @@ class MarketDataProvider:
                 strike=K
             )
 
-            items.append({
-                "strike": round(K, 2),
-                "contract_symbol": str(row.get('contractSymbol', '')),
-                "bid": round(bid, 2),
-                "ask": round(ask, 2),
-                "last": round(last, 2),
-                "mid": round(mid, 2),
-                "theoretical": round(theo_price, 2),
-                "intrinsic": round(eval_res["intrinsic_value"], 2),
-                "time_value": round(eval_res["time_value"], 2),
-                "diff_amount": round(eval_res["diff_amount"], 2),
-                "diff_pct": eval_res["diff_pct"],
-                "iv_pct": round(mkt_iv * 100.0, 2) if mkt_iv > 0 else None,
-                "delta": round(greeks["delta"], 3),
-                "gamma": round(greeks["gamma"], 4),
-                "theta": round(greeks["theta"], 3),
-                "vega": round(greeks["vega"], 3),
-                "volume": vol,
-                "open_interest": oi,
-                "fair_status": eval_res["valuation_status"],
-                "recommendation": eval_res["valuation_status"],
-                "edge_pct": eval_res["diff_pct"],
-                "rec_color": eval_res["status_color"]
-            })
+            items.append(self._contract_row(
+                K, str(row.get('contractSymbol', '')), bid, ask, last, mid, theo_price,
+                eval_res, mkt_iv, greeks, vol, oi
+            ))
 
         return sorted(items, key=lambda x: x["strike"])
 
-    def _generate_futures_option_chain(self, comm: Dict[str, Any], r: float) -> Dict[str, Any]:
+    @staticmethod
+    def _contract_row(K, symbol, bid, ask, last, mid, theo, eval_res, iv, greeks, volume, open_interest) -> Dict[str, Any]:
+        """Fila normalizada de la cadena (misma estructura para cadenas reales y simuladas)."""
+        return {
+            "strike": round(K, 2),
+            "contract_symbol": symbol,
+            "bid": round(bid, 2),
+            "ask": round(ask, 2),
+            "last": round(last, 2),
+            "mid": round(mid, 2),
+            "theoretical": round(theo, 2),
+            "intrinsic": round(eval_res["intrinsic_value"], 2),
+            "time_value": round(eval_res["time_value"], 2),
+            "diff_amount": round(eval_res["diff_amount"], 2),
+            "diff_pct": eval_res["diff_pct"],
+            "iv_pct": round(iv * 100.0, 2) if iv and iv > 0 else None,
+            "delta": round(greeks["delta"], 3),
+            "gamma": round(greeks["gamma"], 4),
+            "theta": round(greeks["theta"], 3),
+            "vega": round(greeks["vega"], 3),
+            "volume": volume,
+            "open_interest": open_interest,
+            "fair_status": eval_res["valuation_status"],
+            "recommendation": eval_res["valuation_status"],
+            "edge_pct": eval_res["diff_pct"],
+            "rec_color": eval_res["status_color"]
+        }
+
+    def _generate_futures_option_chain(
+        self,
+        comm: Dict[str, Any],
+        r: float,
+        target_expiry: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
-        Genera una cadena de opciones de futuros realista calibrada con el precio actual del futuro
-        y Black-76 para activos donde los datos de opciones directas tienen delay o estan cerrados.
+        Genera una cadena SIMULADA de opciones sobre el futuro, valuada con Black-76 y una sonrisa
+        de volatilidad sintetica. Se usa cuando el ETF no tiene opciones disponibles.
+        Los precios "de mercado" son modelados (no son cotizaciones reales) y el volumen / open
+        interest no existen en una simulacion, por eso se devuelven como None.
         """
         live_q = self.get_live_quote(comm["id"])
         F = live_q.get("price", 100.0)
@@ -428,93 +487,45 @@ class MarketDataProvider:
             (today + datetime.timedelta(days=d)).strftime("%Y-%m-%d")
             for d in [14, 30, 60, 90, 180]
         ]
-        curr_exp = exp_dates[1]
-        days_to_exp = 30
+        curr_exp = target_expiry if target_expiry in exp_dates else exp_dates[1]
+        days_to_exp = max(1, (datetime.datetime.strptime(curr_exp, "%Y-%m-%d").date() - today).days)
         T = days_to_exp / 365.0
 
-        # Crear rango de strikes alrededor del precio del futuro (+- 20%)
+        # Rango de strikes alrededor del precio del futuro (+- 20%)
         step = round(F * 0.02, 1) if F < 500 else round(F * 0.01, 0)
         if step <= 0:
             step = 1.0
 
         strikes = [round(F + i * step, 1) for i in range(-8, 9)]
-        calls = []
-        puts = []
+        calls: List[Dict[str, Any]] = []
+        puts: List[Dict[str, Any]] = []
 
         for K in strikes:
-            # Modelo de sonrisa / sesgo de volatilidad realista (volatility smile)
+            # Sonrisa / sesgo de volatilidad sintetico
             moneyness = K / F
             smile_iv = hv + 0.15 * ((moneyness - 1.0) ** 2) - 0.05 * (moneyness - 1.0)
             smile_iv = max(0.08, min(smile_iv, 1.5))
 
-            call_theo = QuantEngine.black76_price(F, K, T, r, hv, "call")
-            put_theo = QuantEngine.black76_price(F, K, T, r, hv, "put")
-
-            call_mkt = QuantEngine.black76_price(F, K, T, r, smile_iv, "call")
-            put_mkt = QuantEngine.black76_price(F, K, T, r, smile_iv, "put")
-
-            call_greeks = QuantEngine.calculate_greeks(F, K, T, r, smile_iv, 0.0, "black76", "call")
-            put_greeks = QuantEngine.calculate_greeks(F, K, T, r, smile_iv, 0.0, "black76", "put")
-
-            call_eval = QuantEngine.evaluate_fair_premium(call_mkt, call_theo, smile_iv, hv, "call", call_greeks["delta"], call_greeks["d2"], F, K)
-            put_eval = QuantEngine.evaluate_fair_premium(put_mkt, put_theo, smile_iv, hv, "put", put_greeks["delta"], put_greeks["d2"], F, K)
-
-            spread = round(call_mkt * 0.02, 2)
-            calls.append({
-                "strike": K,
-                "contract_symbol": f"{comm['id'].upper()}-C-{K}",
-                "bid": round(max(0.05, call_mkt - spread), 2),
-                "ask": round(call_mkt + spread, 2),
-                "last": round(call_mkt, 2),
-                "mid": round(call_mkt, 2),
-                "theoretical": round(call_theo, 2),
-                "intrinsic": round(call_eval["intrinsic_value"], 2),
-                "time_value": round(call_eval["time_value"], 2),
-                "diff_amount": round(call_eval["diff_amount"], 2),
-                "diff_pct": call_eval["diff_pct"],
-                "iv_pct": round(smile_iv * 100.0, 2),
-                "delta": round(call_greeks["delta"], 3),
-                "gamma": round(call_greeks["gamma"], 4),
-                "theta": round(call_greeks["theta"], 3),
-                "vega": round(call_greeks["vega"], 3),
-                "volume": int(np.random.randint(50, 1200)),
-                "open_interest": int(np.random.randint(200, 5000)),
-                "fair_status": call_eval["valuation_status"],
-                "recommendation": call_eval["valuation_status"],
-                "edge_pct": call_eval["diff_pct"],
-                "rec_color": call_eval["status_color"]
-            })
-
-            spread_p = round(put_mkt * 0.02, 2)
-            puts.append({
-                "strike": K,
-                "contract_symbol": f"{comm['id'].upper()}-P-{K}",
-                "bid": round(max(0.05, put_mkt - spread_p), 2),
-                "ask": round(put_mkt + spread_p, 2),
-                "last": round(put_mkt, 2),
-                "mid": round(put_mkt, 2),
-                "theoretical": round(put_theo, 2),
-                "intrinsic": round(put_eval["intrinsic_value"], 2),
-                "time_value": round(put_eval["time_value"], 2),
-                "diff_amount": round(put_eval["diff_amount"], 2),
-                "diff_pct": put_eval["diff_pct"],
-                "iv_pct": round(smile_iv * 100.0, 2),
-                "delta": round(put_greeks["delta"], 3),
-                "gamma": round(put_greeks["gamma"], 4),
-                "theta": round(put_greeks["theta"], 3),
-                "vega": round(put_greeks["vega"], 3),
-                "volume": int(np.random.randint(50, 1200)),
-                "open_interest": int(np.random.randint(200, 5000)),
-                "fair_status": put_eval["valuation_status"],
-                "recommendation": put_eval["valuation_status"],
-                "edge_pct": put_eval["diff_pct"],
-                "rec_color": put_eval["status_color"]
-            })
+            for side, bucket in (("call", calls), ("put", puts)):
+                theo = QuantEngine.black76_price(F, K, T, r, hv, side)
+                mkt = QuantEngine.black76_price(F, K, T, r, smile_iv, side)
+                greeks = QuantEngine.calculate_greeks(F, K, T, r, smile_iv, 0.0, "black76", side)
+                ev = QuantEngine.evaluate_fair_premium(mkt, theo, smile_iv, hv, side, greeks["delta"], greeks["d2"], F, K)
+                spread = round(mkt * 0.02, 2)
+                bucket.append(self._contract_row(
+                    K, f"{comm['id'].upper()}-{side[0].upper()}-{K}",
+                    max(0.05, mkt - spread), mkt + spread, mkt, mkt, theo,
+                    ev, smile_iv, greeks, None, None
+                ))
 
         return {
             "commodity_id": comm["id"],
             "underlying_name": comm["name"],
             "ticker": comm["future_ticker"],
+            "underlying_ticker": comm["future_ticker"],
+            "is_synthetic": True,
+            "model": "black76",
+            "vol_estimator": "garman_klass",
             "spot_price": round(F, 2),
             "days_to_expiry": days_to_exp,
             "T": round(T, 4),
@@ -527,7 +538,7 @@ class MarketDataProvider:
         }
 
     def _generate_fallback_quote(self, comm: Dict[str, Any]) -> Dict[str, Any]:
-        """Fallback en caso de caida temporal de conexion."""
+        """Cotizacion de referencia (NO en vivo) para cuando cae la conexion."""
         base_prices = {
             "gold": 2650.0, "silver": 31.8, "copper": 4.45, "wti": 71.5,
             "brent": 75.2, "natgas": 2.85, "corn": 420.0, "soybeans": 1030.0,
@@ -551,5 +562,6 @@ class MarketDataProvider:
             "risk_free_rate": 4.05,
             "vol_realized_pct": 19.5,
             "vol_parkinson_pct": 18.8,
-            "vol_garman_klass_pct": 19.1
+            "vol_garman_klass_pct": 19.1,
+            "is_offline": True
         }

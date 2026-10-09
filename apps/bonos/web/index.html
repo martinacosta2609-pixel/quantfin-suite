@@ -6,7 +6,7 @@
   <title>Terminal Bonos Argentinos | BYMA & BCRA Market Data</title>
   
   <link rel="icon" type="image/png" href="icon.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261008b">
   <script src="/shared/nav_banner.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 </head>
@@ -33,31 +33,31 @@
       <!-- Macro Indicators HUD -->
       <div class="macro-hud" id="macroHud">
         <div class="hud-item">
-          <span class="hud-label">OFICIAL</span>
+          <span class="hud-label" data-info="oficial">OFICIAL</span>
           <span class="hud-value" id="hudOficial">$ -</span>
         </div>
         <div class="hud-item">
-          <span class="hud-label">DÓLAR MEP</span>
+          <span class="hud-label" data-info="mep">DÓLAR MEP</span>
           <span class="hud-value highlight" id="hudMep">$ -</span>
         </div>
         <div class="hud-item">
-          <span class="hud-label">DÓLAR CCL</span>
+          <span class="hud-label" data-info="ccl">DÓLAR CCL</span>
           <span class="hud-value" id="hudCcl">$ -</span>
         </div>
         <div class="hud-item">
-          <span class="hud-label">BRECHA</span>
+          <span class="hud-label" data-info="brecha">BRECHA</span>
           <span class="hud-value" id="hudBrecha">-%</span>
         </div>
         <div class="hud-item">
-          <span class="hud-label">BADLAR</span>
+          <span class="hud-label" data-info="badlar">BADLAR</span>
           <span class="hud-value" id="hudBadlar">-%</span>
         </div>
         <div class="hud-item">
-          <span class="hud-label">CER</span>
+          <span class="hud-label" data-info="cer">CER</span>
           <span class="hud-value" id="hudCer">-</span>
         </div>
         <div class="hud-item">
-          <span class="hud-label">INFLACIÓN M.</span>
+          <span class="hud-label" data-info="inflacion_m">INFLACIÓN M.</span>
           <span class="hud-value" id="hudInf">-%</span>
         </div>
       </div>
@@ -86,19 +86,12 @@
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="text" id="searchInput" placeholder="Buscar AL30, GD35, Bopreal, CER...">
+        <input type="text" id="searchInput" placeholder="Buscar AL30, S30O6, YPF, caución...">
         <button id="clearSearch" class="btn-clear" style="display: none;">&times;</button>
       </div>
 
       <!-- Category Filter Tabs -->
-      <div class="category-tabs" id="filterTabs">
-        <button class="cat-tab active" data-filter="sovereign">⭐ Soberanos</button>
-        <button class="cat-tab" data-filter="usd">💵 Dólares D</button>
-        <button class="cat-tab" data-filter="bopreal">🏦 Bopreales</button>
-        <button class="cat-tab" data-filter="cer">📈 Boncer CER</button>
-        <button class="cat-tab" data-filter="lecap">📜 Lecaps</button>
-        <button class="cat-tab" data-filter="all">🌐 Todos (<span id="totalBondsCount">0</span>)</button>
-      </div>
+      <div class="category-tabs" id="filterTabs"></div>
 
       <!-- Main Desktop View Switcher -->
       <div class="view-switcher">
@@ -125,6 +118,12 @@
           </svg>
           Comparador a Plazo (TIR)
         </button>
+        <button class="view-btn" id="btnViewScenarios" title="Simulador de Escenarios Macro">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          </svg>
+          Escenarios Macro
+        </button>
         <button class="view-btn" id="btnViewCharts" title="Curvas y Dispersión">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 3v18h18"/>
@@ -145,16 +144,16 @@
             <thead>
               <tr>
                 <th class="sortable" data-sort="symbol">TICKER <span class="sort-icon"></span></th>
-                <th class="sortable" data-sort="type">TIPO / LEY <span class="sort-icon"></span></th>
-                <th class="sortable right" data-sort="price">PRECIO <span class="sort-icon"></span></th>
-                <th class="sortable right" data-sort="change_pct">VAR % <span class="sort-icon"></span></th>
-                <th class="sortable right" data-sort="vt">VALOR TÉCNICO <span class="sort-icon"></span></th>
-                <th class="sortable center" data-sort="parity">PARIDAD (%) <span class="sort-icon"></span></th>
-                <th class="sortable right" data-sort="tir">TIR / YTM (%) <span class="sort-icon"></span></th>
-                <th class="sortable right" data-sort="duration">DURATION <span class="sort-icon"></span></th>
-                <th class="sortable right" data-sort="mod_duration">MD (AÑOS) <span class="sort-icon"></span></th>
-                <th class="sortable right" data-sort="volume_amount">VOLUMEN <span class="sort-icon"></span></th>
-                <th class="sortable center" data-sort="maturity_date">VTO <span class="sort-icon"></span></th>
+                <th class="sortable" data-sort="type" data-info="tipo">TIPO / LEY <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="price" data-info="precio">PRECIO <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="change_pct" data-info="variacion">VAR % <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="vt" data-info="vt">VALOR TÉCNICO <span class="sort-icon"></span></th>
+                <th class="sortable center" data-sort="parity" data-info="paridad">PARIDAD (%) <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="tir" data-info="tir">TIR (TEA %) <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="duration" data-info="duration">DURATION <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="mod_duration" data-info="md">MD (AÑOS) <span class="sort-icon"></span></th>
+                <th class="sortable right" data-sort="volume_amount" data-info="volumen">VOLUMEN <span class="sort-icon"></span></th>
+                <th class="sortable center" data-sort="maturity_date" data-info="vencimiento">VTO <span class="sort-icon"></span></th>
                 <th class="center">ACCIONES</th>
               </tr>
             </thead>
@@ -174,6 +173,12 @@
                 <span class="card-badge badge-cyan">VALUACIÓN DCF</span>
                 <h2 class="card-title">Calculadora de Valor Actual Neto (VAN) & Costo de Capital (k)</h2>
               </div>
+              <div style="margin-top: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
+                <span style="font-size: 12px; color: var(--text-dim); margin-right: 12px;">MONEDA DE EVALUACIÓN:</span>
+                <button class="cat-tab active" id="vanTabUSD" style="padding: 4px 12px; font-size: 12px;">USD</button>
+                <button class="cat-tab" id="vanTabARS" style="padding: 4px 12px; font-size: 12px;">ARS</button>
+                <span id="vanCcyNote" style="font-size: 11px; color: var(--text-muted); margin-left: 12px;"></span>
+              </div>
               <p class="card-subtitle">
                 Evalúa si el precio de mercado de un bono, letra u ON te remunera adecuadamente el riesgo asumido exigiendo tu propia tasa de descuento <strong>k</strong>.
               </p>
@@ -188,9 +193,9 @@
 
               <!-- Investment Amount -->
               <div class="van-field">
-                <label for="vanInvestmentInput">Monto a Invertir (USD / ARS):</label>
+                <label for="vanInvestmentInput">Monto a Invertir:</label>
                 <div class="input-with-prefix">
-                  <span class="prefix">$</span>
+                  <span class="prefix" id="vanInvestPrefix">u$s</span>
                   <input type="number" id="vanInvestmentInput" class="terminal-input" value="1000" min="10" step="50">
                 </div>
               </div>
@@ -198,20 +203,34 @@
               <!-- Required Rate of Return (k) -->
               <div class="van-field rate-field">
                 <div class="rate-label-row">
-                  <label for="vanKInput">Tasa de Costo de Capital Exigida (k):</label>
-                  <span class="rate-display"><strong id="vanKDisplay">12.00%</strong> anual</span>
+                  <label for="vanKInput" data-info="k">Tasa de Costo de Capital Exigida (k):</label>
+                  <span class="rate-display"><strong id="vanKDisplay">12.00%</strong> TEA</span>
                 </div>
                 <div class="rate-slider-row">
-                  <input type="range" id="vanKSlider" min="2.0" max="35.0" step="0.25" value="12.0">
-                  <input type="number" id="vanKInput" class="terminal-input rate-number" value="12.0" step="0.1" min="1" max="100">
+                  <input type="range" id="vanKSlider" min="2.0" max="40.0" step="0.25" value="12.0">
+                  <input type="number" id="vanKInput" class="terminal-input rate-number" value="12.0" step="0.1" min="0" max="300">
                 </div>
-                <div class="preset-chips">
+                <div class="preset-chips" id="vanPresetsUSD">
                   <span class="preset-label">Presets k:</span>
-                  <button class="preset-btn" data-k="8.0">8% (ON Grado Inv.)</button>
-                  <button class="preset-btn" data-k="10.0">10% (Bopreal/Prov)</button>
-                  <button class="preset-btn active" data-k="12.0">12% (Soberano Base)</button>
-                  <button class="preset-btn" data-k="15.0">15% (Riesgo Alto)</button>
-                  <button class="preset-btn" data-k="18.0">18% (Distressed)</button>
+                  <button class="preset-btn" data-k="8.0">8% (ON)</button>
+                  <button class="preset-btn active" data-k="12.0">12% (Sob)</button>
+                  <button class="preset-btn" data-k="15.0">15% (Riesgo)</button>
+                </div>
+                <div class="preset-chips" id="vanPresetsARS" style="display: none;">
+                  <span class="preset-label">Presets k (ARS):</span>
+                  <button class="preset-btn" data-k="25.0">25%</button>
+                  <button class="preset-btn active" data-k="30.0">30%</button>
+                  <button class="preset-btn" data-k="40.0">40%</button>
+                  <button class="preset-btn" data-k="50.0">50%</button>
+                </div>
+              </div>
+
+              <!-- Expected inflation: only in ARS, converts the nominal k into a real rate for CER bonds -->
+              <div class="van-field" id="vanInflField" style="display: none;">
+                <label for="vanInflInput" data-info="inflacion_esperada">Inflación esperada (TEA, para bonos CER):</label>
+                <div class="input-with-prefix">
+                  <span class="prefix">%</span>
+                  <input type="number" id="vanInflInput" class="terminal-input" step="0.5">
                 </div>
               </div>
               <!-- Capital Recovery at Maturity Option -->
@@ -231,31 +250,31 @@
             <div class="van-results-banner">
               <div class="van-kpi-grid">
                 <div class="van-kpi-card">
-                  <span class="kpi-label">INVERSIÓN INICIAL</span>
+                  <span class="kpi-label" data-info="nominales">INVERSIÓN INICIAL</span>
                   <span class="kpi-value" id="kpiInvestment">$ 1,000.00</span>
                   <span class="kpi-sub" id="kpiNominals">Nominales: -</span>
                 </div>
 
                 <div class="van-kpi-card">
-                  <span class="kpi-label">VALOR PRESENTE (VP) FLUJOS</span>
+                  <span class="kpi-label" data-info="vp">VALOR PRESENTE (VP) FLUJOS</span>
                   <span class="kpi-value highlight-cyan" id="kpiPV">$ -</span>
                   <span class="kpi-sub">Descontado a tasa k</span>
                 </div>
 
                 <div class="van-kpi-card van-featured">
-                  <span class="kpi-label">VAN (VALOR ACTUAL NETO)</span>
+                  <span class="kpi-label" data-info="van">VAN (VALOR ACTUAL NETO)</span>
                   <span class="kpi-value" id="kpiVAN">$ -</span>
                   <span class="kpi-sub" id="kpiVanPct">Rentabilidad neta: -%</span>
                 </div>
 
                 <div class="van-kpi-card">
-                  <span class="kpi-label">PRECIO TEÓRICO vs MERCADO</span>
+                  <span class="kpi-label" data-info="precio_teorico">PRECIO TEÓRICO vs MERCADO</span>
                   <span class="kpi-value" id="kpiPrices">- vs -</span>
                   <span class="kpi-sub" id="kpiMargin">Margen: -%</span>
                 </div>
 
                 <div class="van-kpi-card">
-                  <span class="kpi-label">TIR MERCADO vs TASA k</span>
+                  <span class="kpi-label" data-info="spread_k">TIR MERCADO vs TASA k (TEA)</span>
                   <span class="kpi-value" id="kpiYields">- vs -</span>
                   <span class="kpi-sub" id="kpiSpread">Spread: - bps</span>
                 </div>
@@ -280,7 +299,7 @@
             <div class="terminal-card">
               <div class="terminal-card-header">
                 <h3 class="card-title">Desglose de Flujos Descontados paso a paso</h3>
-                <span class="badge-source">Fórmula: VP = CF / (1 + k/2)^(2*t)</span>
+                <span class="badge-source">Fórmula: VP = CF / (1 + k)^t &bull; k en TEA &bull; t = días/365</span>
               </div>
               <div class="table-container compact-wrap">
                 <table class="financial-table compact-table">
@@ -289,12 +308,12 @@
                       <th>FECHA</th>
                       <th class="right">CUPÓN</th>
                       <th class="right">AMORT</th>
-                      <th class="right">RESCATE VT</th>
+                      <th class="right" data-info="vr">RESCATE VT</th>
                       <th class="right">TOTAL CF</th>
                       <th class="right">AÑOS (t)</th>
-                      <th class="right">FACTOR (DF)</th>
-                      <th class="right">VP FLUJO</th>
-                      <th class="right">VP ACUMULADO</th>
+                      <th class="right" data-info="df">FACTOR (DF)</th>
+                      <th class="right" data-info="vp_flujo">VP FLUJO</th>
+                      <th class="right" data-info="vp">VP ACUMULADO</th>
                     </tr>
                   </thead>
                   <tbody id="vanCashflowsBody"></tbody>
@@ -306,17 +325,18 @@
             <div class="terminal-card">
               <div class="terminal-card-header">
                 <h3 class="card-title">Ranking de Mercado: Bonos con mayor VAN para k = <span id="vanKRankingLabel">12%</span></h3>
-                <span class="badge-source">Base $1.000 invertidos</span>
+                <span class="badge-source">Misma moneda de evaluación</span>
               </div>
               <div class="table-container compact-wrap">
                 <table class="financial-table compact-table">
                   <thead>
                     <tr>
                       <th>TICKER</th>
+                      <th class="center">VTO</th>
                       <th class="right">PRECIO</th>
-                      <th class="right">P. TEÓRICO</th>
-                      <th class="right">TIR (%)</th>
-                      <th class="right">VAN ($1.000)</th>
+                      <th class="right" data-info="precio_teorico">P. TEÓRICO</th>
+                      <th class="right" data-info="tir">TIR (TEA)</th>
+                      <th class="right" data-info="van">VAN</th>
                       <th class="center">VEREDICTO</th>
                     </tr>
                   </thead>
@@ -340,8 +360,13 @@
                 <span class="card-badge badge-amber">HORIZONTE TEMPORAL</span>
                 <h2 class="card-title">Comparador por Horizonte de Inversión & TIR a Plazo Fijo</h2>
               </div>
+              <div style="margin-top: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
+                <span style="font-size: 12px; color: var(--text-dim); margin-right: 12px;">MONEDA A COMPARAR:</span>
+                <button class="cat-tab active" id="horizTabUSD" style="padding: 4px 12px; font-size: 12px;">USD</button>
+                <button class="cat-tab" id="horizTabARS" style="padding: 4px 12px; font-size: 12px;">ARS</button>
+              </div>
               <p class="card-subtitle">
-                Define cuánto tiempo piensas mantener los bonos en cartera. <strong>Los bonos que vencen antes son automáticamente excluidos</strong> para que compares exactamente qué bono maximiza tu ganancia hasta la fecha objetivo.
+                Define cuánto tiempo piensas mantener el instrumento. El ranking mide la TIR de <strong>lo que te paga en cupones y amortizaciones dentro de ese plazo</strong>, sin apostar a una ganancia o pérdida por el precio de reventa.
               </p>
             </div>
 
@@ -363,11 +388,17 @@
                 <input type="range" id="horizonSlider" min="1.0" max="12.0" step="0.5" value="5.0">
               </div>
 
-              <div class="horizon-filter-pill">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                </svg>
-                <span>Filtro activo: Solo bonos con vencimiento &ge; <strong id="horizonFilterYear">2031</strong></span>
+              <div class="horizon-filter-pill" style="gap: 12px; flex-wrap: wrap;">
+                <label for="horizonExitMode" data-info="residual">Capital aún no cobrado al final del plazo:</label>
+                <select id="horizonExitMode" class="terminal-select" style="width: auto;">
+                  <option value="par">Precio sin cambios (ceteris paribus)</option>
+                  <option value="cero">No contarlo (solo flujos cobrados)</option>
+                  <option value="tir">Venta a la TIR actual</option>
+                </select>
+                <label for="horizonIncludeMatured" style="display: flex; align-items: center; gap: 6px;">
+                  <input type="checkbox" id="horizonIncludeMatured" checked>
+                  Incluir los que vencen antes de <strong id="horizonFilterYear">2031</strong>
+                </label>
               </div>
             </div>
 
@@ -382,21 +413,21 @@
                 </div>
                 <div class="winner-stats-row">
                   <div class="w-stat">
-                    <span class="w-stat-label">TIR ANUALIZADA AL HORIZONTE</span>
+                    <span class="w-stat-label" data-info="tir_horizonte">TIR ANUALIZADA AL HORIZONTE</span>
                     <span class="w-stat-value highlight-cyan" id="winnerTir">12.91%</span>
                   </div>
                   <div class="w-stat">
-                    <span class="w-stat-label">EFECTIVO COBRADO EN EL PLAZO</span>
+                    <span class="w-stat-label" data-info="efectivo">EFECTIVO COBRADO EN EL PLAZO</span>
                     <span class="w-stat-value" id="winnerCash">$ 39.92</span>
                     <span class="w-stat-sub">Por cada 100 nominales</span>
                   </div>
                   <div class="w-stat">
-                    <span class="w-stat-label">VALOR TERMINAL AL HORIZONTE</span>
+                    <span class="w-stat-label" data-info="residual">CAPITAL RESIDUAL AL FINAL DEL PLAZO</span>
                     <span class="w-stat-value" id="winnerTerminal">$ 69.01</span>
-                    <span class="w-stat-sub">Venta proyectada en 2031</span>
+                    <span class="w-stat-sub">Según el criterio elegido</span>
                   </div>
                   <div class="w-stat">
-                    <span class="w-stat-label">RETORNO TOTAL ACUMULADO</span>
+                    <span class="w-stat-label" data-info="retorno">RETORNO TOTAL ACUMULADO</span>
                     <span class="w-stat-value highlight" id="winnerHpr">+72.9%</span>
                     <span class="w-stat-sub">Ganancia global en 5 años</span>
                   </div>
@@ -411,7 +442,7 @@
             <div class="terminal-card">
               <div class="terminal-card-header">
                 <h3 class="card-title">Ranking Comparativo: Bonos elegibles para mantener hasta <span id="horizonTableYearTitle">2031</span></h3>
-                <span class="badge-source" id="horizonEligibleCount">6 bonos elegibles</span>
+                <span class="badge-source" id="horizonEligibleCount">-</span>
               </div>
               <div class="table-container">
                 <table class="financial-table">
@@ -423,10 +454,10 @@
                       <th class="right">PRECIO COMPRA</th>
                       <th class="center">VTO FINAL</th>
                       <th class="right">AÑOS VTO</th>
-                      <th class="right">EFECTIVO COBRADO</th>
-                      <th class="right">PRECIO SALIDA</th>
-                      <th class="right">RETORNO ACUM.</th>
-                      <th class="right highlight-col">TIR AL HORIZONTE</th>
+                      <th class="right" data-info="efectivo">EFECTIVO COBRADO</th>
+                      <th class="right" data-info="residual">CAPITAL RESIDUAL</th>
+                      <th class="right" data-info="retorno">RETORNO ACUM.</th>
+                      <th class="right highlight-col" data-info="tir_horizonte">TIR AL HORIZONTE</th>
                       <th class="center">ACCIÓN</th>
                     </tr>
                   </thead>
@@ -439,7 +470,7 @@
             <div class="terminal-card">
               <div class="terminal-card-header">
                 <h3 class="card-title">Comparativa de Retorno Anualizado (TIR) a Plazo</h3>
-                <span class="badge-source">TIR Anualizada Efectiva (%)</span>
+                <span class="badge-source">TEA (%) &bull; CER = tasa real</span>
               </div>
               <div class="chart-wrapper" style="min-height: 380px;">
                 <canvas id="horizonChart"></canvas>
@@ -450,7 +481,135 @@
         </div>
       </div>
 
-      <!-- 4. CHARTS VIEW -->
+      <!-- NEW: 4. SIMULADOR DE ESCENARIOS MACRO -->
+      <div class="view-panel" id="scenariosView" style="display: none;">
+        <div class="scenarios-container" style="padding: 24px; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px;">
+          
+          <div class="terminal-card">
+            <div class="terminal-card-header">
+              <div class="card-title-group">
+                <span class="card-badge badge-bopreal">ESCENARIOS</span>
+                <h2 class="card-title">Comparador de Monedas: Pesos (tasa fija / CER) vs Dólares (Hard Dollar)</h2>
+              </div>
+              <p class="card-subtitle">
+                Compara un instrumento en pesos contra uno en dólares bajo tu propia expectativa de inflación y devaluación. Cada alternativa se muestra en sus tres medidas (nominal en pesos, real y en dólares), siempre en tasa efectiva anual.
+              </p>
+            </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; background: rgba(32,39,56,0.3); border-bottom: 1px solid var(--border-color);">
+              <!-- Selección ARS -->
+              <div style="background: rgba(15,23,42,0.6); padding: 16px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+                <h4 style="color: var(--primary-cyan); margin-bottom: 16px; display:flex; align-items:center; gap:8px;">
+                  <span>🇦🇷</span> Alternativa en Pesos (ARS)
+                </h4>
+                <div class="van-field" style="margin-bottom: 16px;">
+                  <label for="scenarioArsSelect">Instrumento (Lecap / Boncap / Boncer):</label>
+                  <select id="scenarioArsSelect" class="terminal-select"></select>
+                </div>
+                <div class="van-field">
+                  <label for="scenarioInfInput" data-info="inflacion_esperada">Inflación esperada:</label>
+                  <div style="display: flex; gap: 8px;">
+                    <div class="input-with-prefix" style="flex: 1;">
+                      <span class="prefix">%</span>
+                      <input type="number" id="scenarioInfInput" class="terminal-input" step="0.1">
+                    </div>
+                    <select id="scenarioInfUnit" class="terminal-select" style="width: 130px;">
+                      <option value="anual">anual (TEA)</option>
+                      <option value="mensual">mensual</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Selección USD -->
+              <div style="background: rgba(15,23,42,0.6); padding: 16px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+                <h4 style="color: var(--accent-green); margin-bottom: 16px; display:flex; align-items:center; gap:8px;">
+                  <span>💵</span> Alternativa en Dólares (USD)
+                </h4>
+                <div class="van-field" style="margin-bottom: 16px;">
+                  <label for="scenarioUsdSelect">Instrumento (Global / Bonar / Bopreal):</label>
+                  <select id="scenarioUsdSelect" class="terminal-select"></select>
+                </div>
+                <div class="van-field">
+                  <label for="scenarioDevInput" data-info="devaluacion">Devaluación esperada del dólar MEP:</label>
+                  <div style="display: flex; gap: 8px;">
+                    <div class="input-with-prefix" style="flex: 1;">
+                      <span class="prefix">%</span>
+                      <input type="number" id="scenarioDevInput" class="terminal-input" value="15.0" step="0.1">
+                    </div>
+                    <select id="scenarioDevUnit" class="terminal-select" style="width: 130px;">
+                      <option value="anual">anual (TEA)</option>
+                      <option value="mensual">mensual</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="padding: 24px;">
+              <div class="van-field" style="max-width: 300px; margin: 0 auto 12px auto; text-align: center;">
+                <label for="scenarioYearsSlider" style="justify-content: center;">Horizonte de Inversión (Años):</label>
+                <input type="range" id="scenarioYearsSlider" min="0.5" max="10.0" step="0.5" value="1.0">
+                <div style="margin-top: 8px; font-weight: 700; color: #fff; font-size: 16px;" id="scenarioYearsVal">1.0 años</div>
+              </div>
+              <div id="scenAssumptions" style="text-align: center; font-size: 12px; color: var(--text-muted); margin-bottom: 20px;"></div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <!-- Pata ARS: nominal -> real -> en dólares -->
+                <div class="van-kpi-card">
+                  <span class="kpi-label">ALTERNATIVA EN PESOS &bull; TEA</span>
+                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 10px 0;">
+                    <div>
+                      <div class="kpi-sub" data-info="rend_nominal">Rendimiento nominal (ARS)</div>
+                      <div class="kpi-value" id="scenArsNominal">-%</div>
+                    </div>
+                    <div>
+                      <div class="kpi-sub" data-info="rend_real">Rendimiento real (vs inflación)</div>
+                      <div class="kpi-value" id="scenArsReal">-%</div>
+                    </div>
+                    <div>
+                      <div class="kpi-sub" data-info="rend_usd">Rendimiento en USD (vs devaluación)</div>
+                      <div class="kpi-value highlight-cyan" id="scenArsUsd">-%</div>
+                    </div>
+                  </div>
+                  <span class="kpi-sub" id="scenArsFormula"></span>
+                  <span class="kpi-sub" id="scenArsBaseTir"></span>
+                </div>
+                <!-- Pata USD: en dólares -> nominal en pesos -> real -->
+                <div class="van-kpi-card">
+                  <span class="kpi-label">ALTERNATIVA EN DÓLARES &bull; TEA</span>
+                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 10px 0;">
+                    <div>
+                      <div class="kpi-sub" data-info="rend_nominal">Rendimiento nominal (ARS)</div>
+                      <div class="kpi-value" id="scenUsdNominal">-%</div>
+                    </div>
+                    <div>
+                      <div class="kpi-sub" data-info="rend_real">Rendimiento real (vs inflación)</div>
+                      <div class="kpi-value" id="scenUsdReal">-%</div>
+                    </div>
+                    <div>
+                      <div class="kpi-sub" data-info="rend_usd">Rendimiento en USD</div>
+                      <div class="kpi-value" style="color:var(--accent-green);" id="scenUsdUsd">-%</div>
+                    </div>
+                  </div>
+                  <span class="kpi-sub" id="scenUsdFormula"></span>
+                  <span class="kpi-sub" id="scenUsdBaseTir"></span>
+                </div>
+              </div>
+
+              <div class="van-verdict-box" style="margin-top: 24px; justify-content: center; text-align: center;">
+                <div class="verdict-content" style="align-items: center;">
+                  <div class="verdict-title" id="scenVerdictTitle" style="font-size: 18px;">Ganador en el Escenario: -</div>
+                  <div class="verdict-desc" id="scenVerdictDesc">Ajusta los parámetros para comparar.</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. CHARTS VIEW -->
       <div class="view-panel" id="chartsView" style="display: none;">
         <div class="charts-grid">
           <div class="chart-card">
@@ -493,7 +652,7 @@
         <span class="footer-stat">Actualizado: <strong id="statTime">--:--:--</strong></span>
       </div>
       <div class="footer-right">
-        <span>Convención 30/360 &bull; TIR Semestral SciPy Brentq &bull; Valuación DCF &bull; Análisis de Horizonte Temporal</span>
+        <span>Tasas en TEA Act/365 &bull; Intereses corridos 30/360 &bull; CER con rezago de 10 días hábiles &bull; QA Trace en consola (F12)</span>
       </div>
     </footer>
   </div>
@@ -517,28 +676,29 @@
         <!-- Key Metrics Cards -->
         <div class="modal-stats-grid">
           <div class="modal-stat-box">
-            <div class="modal-stat-label">PRECIO MERCADO</div>
+            <div class="modal-stat-label" data-info="precio">PRECIO MERCADO</div>
             <div class="modal-stat-value" id="modalPrice">-</div>
           </div>
           <div class="modal-stat-box">
-            <div class="modal-stat-label">VALOR TÉCNICO (VT)</div>
+            <div class="modal-stat-label" data-info="vt">VALOR TÉCNICO (VT)</div>
             <div class="modal-stat-value" id="modalVT">-</div>
             <div class="modal-stat-sub" id="modalVR">VR: - | IC: -</div>
           </div>
           <div class="modal-stat-box highlight">
-            <div class="modal-stat-label">PARIDAD</div>
+            <div class="modal-stat-label" data-info="paridad">PARIDAD</div>
             <div class="modal-stat-value" id="modalParity">-%</div>
           </div>
           <div class="modal-stat-box highlight-cyan">
-            <div class="modal-stat-label">TIR ANUAL (YTM)</div>
+            <div class="modal-stat-label" data-info="tir">TIR (TEA)</div>
             <div class="modal-stat-value" id="modalTIR">-%</div>
+            <div class="modal-stat-sub" id="modalTirNote"></div>
           </div>
           <div class="modal-stat-box">
-            <div class="modal-stat-label">DURATION (MACAULAY)</div>
+            <div class="modal-stat-label" data-info="duration">DURATION (MACAULAY)</div>
             <div class="modal-stat-value" id="modalDuration">- a</div>
           </div>
           <div class="modal-stat-box">
-            <div class="modal-stat-label">DURATION MODIFICADA</div>
+            <div class="modal-stat-label" data-info="md">DURATION MODIFICADA</div>
             <div class="modal-stat-value" id="modalMD">- a</div>
           </div>
         </div>
@@ -551,11 +711,11 @@
           </div>
           <div class="modal-van-controls">
             <div class="sim-control-group">
-              <label>Inversión: <strong>$</strong></label>
+              <label>Inversión: <strong id="modalVanCur">$</strong></label>
               <input type="number" id="modalVanInvest" class="terminal-input" value="1000" style="width: 100px;">
             </div>
             <div class="sim-control-group" style="flex: 1;">
-              <label>Tasa k exigida: <strong id="modalVanKVal">12.0%</strong></label>
+              <label>Tasa k exigida (TEA): <strong id="modalVanKVal">12.0%</strong></label>
               <input type="range" id="modalVanKSlider" min="2.0" max="35.0" step="0.5" value="12.0">
             </div>
             <div class="modal-van-result-badge" id="modalVanResultBadge">
@@ -602,7 +762,7 @@
                 <th class="right">CUPÓN</th>
                 <th class="right">AMORT</th>
                 <th class="right">TOTAL</th>
-                <th class="right">VR RESTANTE</th>
+                <th class="right" data-info="vr">VR RESTANTE</th>
                 <th class="right">AÑOS</th>
               </tr>
             </thead>
@@ -613,6 +773,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="glosario.js?v=20261008"></script>
+  <script src="app.js?v=20261008b"></script>
 </body>
 </html>

@@ -16,6 +16,24 @@ from backend.quant_engine import QuantEngine
 
 
 class EconometricValidator:
+    @staticmethod
+    def _terminal_position(index: pd.DatetimeIndex, pos: int, horizon_days: int):
+        """
+        Posicion de la ultima rueda con fecha <= fecha(pos) + horizon_days (dias calendario).
+        Devuelve (posicion, horizonte_efectivo_en_dias); posicion es None si el futuro disponible
+        es demasiado corto (< 5 dias) para verificar el resultado.
+        """
+        start = index[pos]
+        target = start + pd.Timedelta(days=horizon_days)
+        last = index[-1]
+        if target > last:
+            horizon_days = (last - start).days
+            target = last
+        term = int(index.searchsorted(target, side="right")) - 1
+        if term <= pos or horizon_days < 5:
+            return None, horizon_days
+        return term, horizon_days
+
     @classmethod
     def run_historical_test(
         cls,
@@ -56,13 +74,11 @@ class EconometricValidator:
         t0_idx = past_dates[-1]
         t0_pos = df.index.get_loc(t0_idx)
 
-        # Verificar si hay suficientes datos futuros a t0 para evaluar el resultado real
-        if t0_pos + horizon_days >= len(df):
-            # Si no hay suficiente futuro completo, ajustamos el horizonte disponible
-            available_horizon = len(df) - 1 - t0_pos
-            if available_horizon < 5:
-                return {"error": "La fecha elegida es demasiado reciente para verificar el resultado a vencimiento."}
-            horizon_days = available_horizon
+        # El horizonte se mide en dias CALENDARIO (igual que T = dias / 365 en la formula).
+        # Si no hay futuro suficiente, se trunca al maximo disponible.
+        term_pos, horizon_days = cls._terminal_position(df.index, t0_pos, horizon_days)
+        if term_pos is None:
+            return {"error": "La fecha elegida es demasiado reciente para verificar el resultado a vencimiento."}
 
         # 1. MUESTRA ESTRICTAMENTE PREVIA A t0 (Ventana de estimacion)
         est_df = df.iloc[max(0, t0_pos - window_days): t0_pos]
@@ -97,7 +113,7 @@ class EconometricValidator:
         greeks_t0 = QuantEngine.calculate_greeks(S_t0, K, T, risk_free_rate, sigma_hat, 0.0, model, option_type)
 
         # 5. TRAYECTORIA REAL DEL SUBYACENTE POSTERIOR A t0
-        post_df = df.iloc[t0_pos: t0_pos + horizon_days + 1]
+        post_df = df.iloc[t0_pos: term_pos + 1]
         dates_post = [d.strftime("%Y-%m-%d") for d in post_df.index]
         prices_post = post_df['Close'].tolist()
         
@@ -181,9 +197,14 @@ class EconometricValidator:
         start_eval = max(window_days, end_pos - sample_size)
         step = max(1, (end_pos - start_eval) // 50)
 
+        last_date = df.index[-1]
+        horizon_td = pd.Timedelta(days=horizon_days)
+
         for i in range(start_eval, end_pos, step):
-            if i + horizon_days >= len(df):
+            target_date = df.index[i] + horizon_td
+            if target_date > last_date:
                 break
+            term_i = int(df.index.searchsorted(target_date, side="right")) - 1
 
             # Estimacion con datos estrictamente anteriores a i
             sub_est = df.iloc[i - window_days: i]
@@ -209,7 +230,7 @@ class EconometricValidator:
             else:
                 theo = QuantEngine.bsm_price(S_i, K_i, T, risk_free_rate, sig, 0.0, option_type)
 
-            S_term = float(df['Close'].iloc[i + horizon_days])
+            S_term = float(df['Close'].iloc[term_i])
             payoff = max(0.0, (S_term - K_i) if is_call else (K_i - S_term))
             realized = payoff * np.exp(-risk_free_rate * T)
 

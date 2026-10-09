@@ -58,6 +58,51 @@ def test_quant_engine():
     print("QuantEngine: TODOS LOS TESTS SUPERADOS.\n")
 
 
+def test_greeks_vs_finite_differences():
+    print("--- 1b. Griegas analiticas vs diferencias finitas (BSM, BSM con q, Black-76) ---")
+    S, T, r, sigma, h = 100.0, 0.4, 0.045, 0.27, 1e-4
+
+    for model, q in (("black76", 0.0), ("bsm", 0.0), ("bsm", 0.02)):
+        for opt in ("call", "put"):
+            for K in (90.0, 100.0, 110.0):
+                def px(S_=S, T_=T, r_=r, s_=sigma):
+                    if model == "black76":
+                        return QuantEngine.black76_price(S_, K, T_, r_, s_, opt)
+                    return QuantEngine.bsm_price(S_, K, T_, r_, s_, q, opt)
+
+                g = QuantEngine.calculate_greeks(S, K, T, r, sigma, q, model, opt)
+                fd = {
+                    "delta": (px(S_=S + h) - px(S_=S - h)) / (2 * h),
+                    "gamma": (px(S_=S + h) - 2 * px() + px(S_=S - h)) / h ** 2,
+                    "vega": (px(s_=sigma + h) - px(s_=sigma - h)) / (2 * h) / 100.0,
+                    # Theta = -dP/dT, por dia calendario (regresion: Black-76 tenia el signo de r*P invertido)
+                    "theta": (px(T_=T - h) - px(T_=T + h)) / (2 * h) / 365.0,
+                    "rho": (px(r_=r + h) - px(r_=r - h)) / (2 * h) / 100.0,
+                }
+                for name, expected in fd.items():
+                    assert abs(g[name] - expected) <= 5e-4 * max(1.0, abs(expected)), \
+                        f"{model} q={q} {opt} K={K}: {name} analitica={g[name]:.6f} vs numerica={expected:.6f}"
+    print("Delta, Gamma, Vega, Theta y Rho coinciden con la derivada numerica en todos los casos.")
+
+    # La curva vectorizada debe ser identica a evaluar punto por punto
+    spots = np.linspace(70, 130, 45)
+    vec = QuantEngine.price_curve(spots, 100.0, 0.25, 0.04, 0.3, 0.0, "bsm", "put")
+    scalar = np.array([QuantEngine.bsm_price(s, 100.0, 0.25, 0.04, 0.3, 0.0, "put") for s in spots])
+    assert np.allclose(vec, scalar, atol=1e-12), "Curva vectorizada distinta de la escalar"
+
+    # Black-76 == BSM con S=F y q=r
+    assert abs(QuantEngine.black76_price(100, 95, 0.5, 0.05, 0.3, "call")
+               - QuantEngine.bsm_price(100, 95, 0.5, 0.05, 0.3, 0.05, "call")) < 1e-12
+
+    # IV: ida y vuelta en ambos modelos
+    for model in ("black76", "bsm"):
+        p = (QuantEngine.black76_price(100, 105, 0.3, 0.04, 0.41, "call") if model == "black76"
+             else QuantEngine.bsm_price(100, 105, 0.3, 0.04, 0.41, 0.0, "call"))
+        iv = QuantEngine.calculate_implied_volatility(p, 100, 105, 0.3, 0.04, 0.0, model, "call")
+        assert iv is not None and abs(iv - 0.41) < 1e-4, f"IV no se recupera en {model}"
+    print("Curva vectorizada, equivalencia Black-76/BSM e inversion de IV: OK.\n")
+
+
 def test_econometric_validator():
     print("--- 2. Testing EconometricValidator ---")
     # Generar serie simulada con movimiento browniano geometrico
@@ -104,6 +149,14 @@ def test_econometric_validator():
 
     assert "rmse" in diag and diag["rmse"] >= 0, "Fallo en diagnosticos RMSE"
     assert "durbin_watson" in diag, "Fallo en Durbin Watson"
+
+    # El horizonte se mide en dias CALENDARIO: la fecha de la ultima rueda del camino debe caer
+    # dentro de t0 + 30 dias (antes se tomaban 30 ruedas, ~42 dias calendario).
+    t0 = pd.Timestamp(result["target_date"])
+    last_path_date = pd.Timestamp(result["path_dates"][-1])
+    assert (last_path_date - t0).days <= 30, "El horizonte no esta en dias calendario"
+    assert (last_path_date - t0).days >= 26, "El camino real es mas corto que el horizonte"
+    assert result["horizon_days"] == 30
     print("EconometricValidator: TODOS LOS TESTS SUPERADOS.\n")
 
 
@@ -145,6 +198,7 @@ def test_api_bridge():
 
 if __name__ == "__main__":
     test_quant_engine()
+    test_greeks_vs_finite_differences()
     test_econometric_validator()
     test_api_bridge()
     print(">>> TODAS LAS PRUEBAS CUANTITATIVAS Y ECONOMETRICAS PASARON CON EXITO (100%). <<<")

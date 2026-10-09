@@ -11,10 +11,10 @@ import json
 from engine.database import (
     init_db,
     get_db_connection,
-    save_monte_carlo_result
+    invalidate_cache,
 )
 from engine.accounting import compute_all_metrics
-from engine.monte_carlo import run_monte_carlo_simulation
+from engine.monte_carlo import run_monte_carlo_simulation, stable_seed
 
 GICS_SECTORS = [
     {"name": "Information Technology", "code": "XLK", "description": "Software, hardware, semiconductors, and technology services."},
@@ -474,16 +474,16 @@ def generate_synthetic_history(ticker: str, current_price: float, beta: float = 
     """
     Generates 60 monthly periods of realistic market and excess returns for econometric testing.
     """
-    np.random.seed(abs(hash(ticker)) % 100000)
+    rng = np.random.default_rng(stable_seed(ticker))
     n = 60
     dates = pd.date_range(end=datetime.now(), periods=n, freq="30D").strftime("%Y-%m-%d").tolist()
-    
+
     # Market return (S&P 500)
-    mkt_ret = np.random.normal(0.009, 0.042, n)
-    rate_change = np.random.normal(0.0003, 0.004, n)
-    sec_ret = 0.85 * mkt_ret + np.random.normal(0.001, 0.025, n)
-    alpha = np.random.normal(0.0015, 0.003)
-    residual = np.random.normal(0.0, 0.028, n)
+    mkt_ret = rng.normal(0.009, 0.042, n)
+    rate_change = rng.normal(0.0003, 0.004, n)
+    sec_ret = 0.85 * mkt_ret + rng.normal(0.001, 0.025, n)
+    alpha = rng.normal(0.0015, 0.003)
+    residual = rng.normal(0.0, 0.028, n)
     
     stock_ret = alpha + beta * mkt_ret + 0.2 * sec_ret - 0.4 * rate_change + residual
     
@@ -568,7 +568,7 @@ def seed_database():
             tax_rate=tax_rate,
             reinvestment_rate_mean=reinvestment_rate_mean,
             num_simulations=5000,
-            random_seed=abs(hash(ticker)) % 100000
+            random_seed=stable_seed(ticker)
         )
 
         p10 = mc_result["percentiles"]["p10"]
@@ -582,7 +582,7 @@ def seed_database():
             metrics["ebitda"], metrics["ev"], metrics["ev_ebitda"], metrics["net_debt"], metrics["net_debt_ebitda"],
             trailing_eps, forward_eps, metrics["trailing_pe"], metrics["forward_pe"],
             rev_growth_mean, rev_growth_std, margin_mean, margin_std,
-            reinvestment_rate_mean, p10, p50, p90
+            reinvestment_rate_mean, revenue_ps, p10, p50, p90
         ))
 
         mc_cache_records.append((ticker, json.dumps(mc_result)))
@@ -605,7 +605,7 @@ def seed_database():
             ebitda, ev, ev_ebitda, net_debt, net_debt_ebitda,
             trailing_eps, forward_eps, trailing_pe, forward_pe,
             rev_growth_mean, rev_growth_std, margin_mean, margin_std,
-            reinvestment_rate_mean, mc_p10, mc_p50, mc_p90
+            reinvestment_rate_mean, revenue_ps, mc_p10, mc_p50, mc_p90
         ) VALUES (
             ?, ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?,
@@ -613,7 +613,7 @@ def seed_database():
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
             ?, ?, ?, ?,
-            ?, ?, ?, ?
+            ?, ?, ?, ?, ?
         )
     """, stock_records)
 
@@ -634,7 +634,25 @@ def seed_database():
 
     conn.commit()
     conn.close()
+    invalidate_cache()
     print(f"[OK] Base de datos sembrada exitosamente con {total_stocks} acciones en los 11 sectores GICS.")
+
+
+def backfill_revenue_ps() -> int:
+    """
+    One-time migration for databases created before `revenue_ps` was stored: copies the
+    per-share revenue baseline from the seed table. Returns the number of rows updated.
+    """
+    with get_db_connection() as conn:
+        rows = [(item[-1], item[0]) for item in STOCKS_RAW]
+        cur = conn.executemany(
+            "UPDATE stocks SET revenue_ps = ? WHERE ticker = ? AND revenue_ps IS NULL", rows
+        )
+        updated = cur.rowcount
+        conn.commit()
+    if updated > 0:
+        invalidate_cache()
+    return max(updated, 0)
 
 
 if __name__ == "__main__":

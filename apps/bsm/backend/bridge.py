@@ -133,30 +133,16 @@ class ApiBridge:
             s_min = S_or_F * 0.70
             s_max = S_or_F * 1.30
             spot_steps = np.linspace(s_min, s_max, 45)
-            
-            call_expiry_pnl = []
-            call_today_val = []
-            put_expiry_pnl = []
-            put_today_val = []
 
-            for s_val in spot_steps:
-                # Call
-                c_intr = max(0.0, s_val - K)
-                call_expiry_pnl.append(round(float(c_intr - call_eff_mkt), 2))
-                if model == "black76":
-                    c_today = QuantEngine.black76_price(s_val, K, T, r, sigma, "call") - call_eff_mkt
-                else:
-                    c_today = QuantEngine.bsm_price(s_val, K, T, r, sigma, q, "call") - call_eff_mkt
-                call_today_val.append(round(float(c_today), 2))
-
-                # Put
-                p_intr = max(0.0, K - s_val)
-                put_expiry_pnl.append(round(float(p_intr - put_eff_mkt), 2))
-                if model == "black76":
-                    p_today = QuantEngine.black76_price(s_val, K, T, r, sigma, "put") - put_eff_mkt
-                else:
-                    p_today = QuantEngine.bsm_price(s_val, K, T, r, sigma, q, "put") - put_eff_mkt
-                put_today_val.append(round(float(p_today), 2))
+            # Todo el barrido de precios se valua en una sola pasada vectorizada
+            call_expiry_pnl = np.round(np.maximum(0.0, spot_steps - K) - call_eff_mkt, 2).tolist()
+            put_expiry_pnl = np.round(np.maximum(0.0, K - spot_steps) - put_eff_mkt, 2).tolist()
+            call_today_val = np.round(
+                QuantEngine.price_curve(spot_steps, K, T, r, sigma, q, model, "call") - call_eff_mkt, 2
+            ).tolist()
+            put_today_val = np.round(
+                QuantEngine.price_curve(spot_steps, K, T, r, sigma, q, model, "put") - put_eff_mkt, 2
+            ).tolist()
 
             # Referencia activa segun el toggle seleccionado por el usuario
             active_is_call = (option_type == "call")
@@ -169,10 +155,22 @@ class ApiBridge:
             return {
                 "status": "success",
                 "data": {
+                    # Parametros efectivamente usados (el frontend los usa para explicar los resultados)
+                    "inputs": {
+                        "underlying_price": S_or_F,
+                        "strike": K,
+                        "days_to_expiry": days,
+                        "T": round(T, 6),
+                        "risk_free_rate_pct": r * 100.0,
+                        "volatility_pct": sigma * 100.0,
+                        "dividend_yield_pct": q * 100.0,
+                        "model": model
+                    },
                     # Datos integrales de ambas primas justas
                     "call": {
                         "fair_premium": round(call_theo, 4),
                         "market_price": round(call_eff_mkt, 4),
+                        "has_market_price": call_eval["has_market_price"],
                         "intrinsic_value": call_eval["intrinsic_value"],
                         "time_value": call_eval["time_value"],
                         "diff_amount": call_eval["diff_amount"],
@@ -188,6 +186,7 @@ class ApiBridge:
                     "put": {
                         "fair_premium": round(put_theo, 4),
                         "market_price": round(put_eff_mkt, 4),
+                        "has_market_price": put_eval["has_market_price"],
                         "intrinsic_value": put_eval["intrinsic_value"],
                         "time_value": put_eval["time_value"],
                         "diff_amount": put_eval["diff_amount"],

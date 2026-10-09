@@ -1,7 +1,12 @@
-import pandas as pd
-import numpy as np
-import yfinance as yf
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List
+
+import numpy as np
+import pandas as pd
+import yfinance as yf
+
+from core.cache import TTLCache
 from core.data_fetcher import DataFetcher
 from core.fama_french_engine import FamaFrenchEngine
 
@@ -206,126 +211,123 @@ SP500_SECTORS = {
     }
 }
 
+log = logging.getLogger(__name__)
+
+SECTOR_CACHE_TTL = 15 * 60
+
+# Umbrales de la regla de decisión. Los textos de la Guía de indicadores (gui/js/glossary.js) los citan.
+ALPHA_PVALUE_MAX = 0.15     # p-valor máximo para considerar el alpha "señal" (más laxo que el 5 % clásico)
+ALPHA_BUY_MIN = 0.035       # alpha anual mínimo para COMPRAR por alpha
+ALPHA_SELL_MAX = -0.035     # alpha anual máximo para VENDER por alpha
+KE_BUY_MIN_WITH_ALPHA = 0.08
+KE_BUY_HIGH = 0.14          # retorno esperado "alto"
+BETA_BUY_MAX = 1.25
+BETA_SELL_MIN = 1.40
+KE_SELL_LOW = 0.10
+
+
 class SectorAnalyzer:
     def __init__(self, data_fetcher: DataFetcher):
         self.fetcher = data_fetcher
-        self.cache = {}
+        self.cache = TTLCache(SECTOR_CACHE_TTL, maxsize=64)
 
     def get_all_sectors_metadata(self) -> List[Dict[str, Any]]:
-        result = []
-        for s_id, s_data in SP500_SECTORS.items():
-            result.append({
+        return [
+            {
                 "id": s_id,
-                "name": s_data["name"],
-                "etf": s_data["etf"],
-                "description": s_data["description"],
-                "stocks_count": len(s_data["tickers"])
-            })
-        return result
+                "name": s["name"],
+                "etf": s["etf"],
+                "description": s["description"],
+                "stocks_count": len(s["tickers"]),
+            }
+            for s_id, s in SP500_SECTORS.items()
+        ]
 
-    def analyze_sector(self, sector_id: str, model_type: str = "FF5", period: str = "2y") -> Dict[str, Any]:
+    def analyze_sector(self, sector_id: str, model_type: str = "FF5", period: str = "2y",
+                       force_refresh: bool = False) -> Dict[str, Any]:
         """
-        Performs batch multi-factor Fama-French estimation and financial decision assessment
-        for all constituent stocks in the selected S&P 500 sector.
+        Estimación multifactor por lote y decisión cuantitativa para cada acción líder del sector.
+        Resultados cacheados 15 minutos por (sector, modelo, muestra).
         """
         if sector_id not in SP500_SECTORS:
             sector_id = "tech"
+
+        cache_key = (sector_id, model_type, period)
+        if not force_refresh:
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                return cached
 
         sector_info = SP500_SECTORS[sector_id]
         tickers_list = [t["symbol"] for t in sector_info["tickers"]]
         name_map = {t["symbol"]: t["name"] for t in sector_info["tickers"]}
 
-        # Check in-memory cache (valid for session or 15 mins)
-        cache_key = f"{sector_id}_{model_type}_{period}"
-        if cache_key in self.cache:
-            return self.cache[cache_key]
-
-        # 1. Ensure Kenneth French factors are loaded
         ff_df = self.fetcher.get_fama_french_factors()
 
-        # 2. Batch download historical close prices
-        try:
-            download_df = yf.download(tickers_list, period=period, auto_adjust=True, progress=False)
-            if download_df.empty or "Close" not in download_df:
-                raise ValueError("No se pudieron descargar los datos del sector.")
-            closes = download_df["Close"]
-        except Exception as e:
-            raise RuntimeError(f"Error descargando datos del sector {sector_info['name']}: {str(e)}")
+        # P/E y dividendos se consultan en paralelo mientras se descargan los precios.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            snapshot_future = pool.submit(self.fetcher.get_valuation_snapshot, tickers_list)
+            try:
+                download_df = yf.download(tickers_list, period=period, auto_adjust=True, progress=False)
+                if download_df.empty or "Close" not in download_df:
+                    raise ValueError("No se pudieron descargar los datos del sector.")
+                closes = download_df["Close"]
+            except Exception as e:
+                raise RuntimeError(f"Error descargando datos del sector {sector_info['name']}: {str(e)}")
+            snapshot = snapshot_future.result()
 
         engine = FamaFrenchEngine(model_type=model_type)
-        stock_results = []
-
-        buy_count = 0
-        hold_count = 0
-        sell_count = 0
+        stock_results: List[Dict[str, Any]] = []
+        skipped: List[str] = []
+        counts = {"COMPRAR": 0, "MANTENER": 0, "VENDER": 0}
 
         for symbol in tickers_list:
             try:
                 if symbol not in closes.columns:
+                    skipped.append(symbol)
                     continue
 
                 s_series = closes[symbol].dropna()
                 if len(s_series) < 30:
+                    skipped.append(symbol)
                     continue
 
-                current_price = float(s_series.iloc[-1])
-
-                # Build stock df
                 s_df = pd.DataFrame({
                     "Date": pd.to_datetime(s_series.index.date),
                     "Close": s_series.values
                 })
                 s_df["Return"] = s_df["Close"].pct_change()
 
-                # Align with Fama-French factors
                 merged = pd.merge(s_df, ff_df, on="Date", how="inner").dropna()
                 merged["Stock_Excess_Return"] = merged["Return"] - merged["RF"]
-
                 if len(merged) < 30:
+                    skipped.append(symbol)
                     continue
 
-                # Estimate model
-                est = engine.estimate(merged, cov_type="HAC")
-                
-                params_dict = {p["factor"]: p for p in est["econometrics"]["parameters"]}
-                beta_mkt = params_dict.get("Mkt-RF", {}).get("coef", 1.0)
-                beta_smb = params_dict.get("SMB", {}).get("coef", 0.0)
-                beta_hml = params_dict.get("HML", {}).get("coef", 0.0)
+                est = engine.estimate(merged, cov_type="HAC", diagnostics=False)
+
+                params = {p["factor"]: p for p in est["econometrics"]["parameters"]}
+                beta_mkt = params.get("Mkt-RF", {}).get("coef", 1.0)
+                beta_smb = params.get("SMB", {}).get("coef", 0.0)
+                beta_hml = params.get("HML", {}).get("coef", 0.0)
                 alpha_ann = est["alpha_annual"]
                 alpha_pval = est["alpha_pvalue"]
                 ke = est["cost_of_equity"]
                 r2 = est["econometrics"]["summary_metrics"]["r_squared"]
 
-                # Fetch basic valuation multiples (cached fast)
-                pe_ratio = None
-                div_yield = 0.0
-                try:
-                    t_obj = yf.Ticker(symbol)
-                    fast_info = t_obj.fast_info
-                    pe_ratio = fast_info.get("peRatio") or None
-                except Exception:
-                    pass
+                fundamentals = snapshot.get(symbol, {})
+                pe_ratio = fundamentals.get("pe_ratio")
+                div_yield = fundamentals.get("dividend_yield", 0.0)
 
-                # Quantitative Decision Algorithm
                 decision = self._compute_financial_decision(
-                    ke=ke,
-                    alpha_ann=alpha_ann,
-                    alpha_pval=alpha_pval,
-                    beta_mkt=beta_mkt,
-                    pe_ratio=pe_ratio
+                    ke=ke, alpha_ann=alpha_ann, alpha_pval=alpha_pval, beta_mkt=beta_mkt, pe_ratio=pe_ratio
                 )
-
-                if decision["verdict"] == "COMPRAR":
-                    buy_count += 1
-                elif decision["verdict"] == "VENDER":
-                    sell_count += 1
-                else:
-                    hold_count += 1
+                counts[decision["verdict"]] += 1
 
                 stock_results.append({
                     "symbol": symbol,
                     "name": name_map.get(symbol, symbol),
-                    "current_price": current_price,
+                    "current_price": float(s_series.iloc[-1]),
                     "cost_of_equity": ke,
                     "cost_of_equity_pct": ke * 100.0,
                     "beta_mkt": beta_mkt,
@@ -334,18 +336,16 @@ class SectorAnalyzer:
                     "alpha_ann_pct": alpha_ann * 100.0,
                     "alpha_pval": alpha_pval,
                     "r_squared_pct": r2 * 100.0,
-                    "pe_ratio": float(pe_ratio) if pe_ratio else None,
+                    "pe_ratio": pe_ratio,
                     "dividend_yield": div_yield,
                     "decision": decision
                 })
+            except Exception as exc:
+                log.warning("Se omite %s en el sector %s: %s", symbol, sector_id, exc)
+                skipped.append(symbol)
 
-            except Exception:
-                continue
-
-        # Compute sector averages
-        avg_ke = np.mean([s["cost_of_equity_pct"] for s in stock_results]) if stock_results else 0.0
-        avg_beta = np.mean([s["beta_mkt"] for s in stock_results]) if stock_results else 1.0
-        avg_alpha = np.mean([s["alpha_ann_pct"] for s in stock_results]) if stock_results else 0.0
+        def mean_of(key: str, default: float) -> float:
+            return float(np.mean([s[key] for s in stock_results])) if stock_results else default
 
         output = {
             "sector_id": sector_id,
@@ -353,31 +353,31 @@ class SectorAnalyzer:
             "etf": sector_info["etf"],
             "description": sector_info["description"],
             "total_stocks": len(stock_results),
+            "skipped": skipped,
             "summary": {
-                "avg_cost_of_equity_pct": float(avg_ke),
-                "avg_beta_mkt": float(avg_beta),
-                "avg_alpha_pct": float(avg_alpha),
-                "buy_count": buy_count,
-                "hold_count": hold_count,
-                "sell_count": sell_count
+                "avg_cost_of_equity_pct": mean_of("cost_of_equity_pct", 0.0),
+                "avg_beta_mkt": mean_of("beta_mkt", 1.0),
+                "avg_alpha_pct": mean_of("alpha_ann_pct", 0.0),
+                "buy_count": counts["COMPRAR"],
+                "hold_count": counts["MANTENER"],
+                "sell_count": counts["VENDER"]
             },
             "stocks": stock_results
         }
 
-        # Cache in memory
-        self.cache[cache_key] = output
+        self.cache.set(cache_key, output)
         return output
 
-    def _compute_financial_decision(self, ke: float, alpha_ann: float, alpha_pval: float, 
+    def _compute_financial_decision(self, ke: float, alpha_ann: float, alpha_pval: float,
                                     beta_mkt: float, pe_ratio: float = None) -> Dict[str, Any]:
         """
-        Quantitative decision logic balancing Fama-French systematic risk compensation,
-        alpha generation, market sensitivity, and valuation multiples.
+        Regla de decisión sobre la compensación de riesgo de Fama-French, el alpha y la sensibilidad
+        al mercado. El P/E se muestra como contexto pero no interviene en la regla.
         """
-        is_alpha_sig = alpha_pval < 0.15
+        is_alpha_sig = alpha_pval < ALPHA_PVALUE_MAX
 
-        # Rule 1: Significant positive alpha with solid expected return
-        if is_alpha_sig and alpha_ann > 0.035 and ke > 0.08:
+        # Regla 1: alpha positivo significativo con retorno esperado razonable
+        if is_alpha_sig and alpha_ann > ALPHA_BUY_MIN and ke > KE_BUY_MIN_WITH_ALPHA:
             return {
                 "verdict": "COMPRAR",
                 "color": "bullish",
@@ -385,8 +385,8 @@ class SectorAnalyzer:
                 "reason": f"Genera Alpha anormal positivo significativo (+{alpha_ann*100:.1f}%, p={alpha_pval:.3f}) superando la compensación de factores."
             }
 
-        # Rule 2: Attractive expected return with reasonable beta
-        if ke > 0.14 and beta_mkt <= 1.25 and (alpha_ann >= -0.01 or not is_alpha_sig):
+        # Regla 2: retorno esperado alto con beta de mercado acotado
+        if ke > KE_BUY_HIGH and beta_mkt <= BETA_BUY_MAX and (alpha_ann >= -0.01 or not is_alpha_sig):
             return {
                 "verdict": "COMPRAR",
                 "color": "bullish",
@@ -394,8 +394,8 @@ class SectorAnalyzer:
                 "reason": f"Alto retorno esperado ({ke*100:.1f}%) con beta controlado ({beta_mkt:.2f})."
             }
 
-        # Rule 3: Significant negative alpha (underperforming systematic factor compensation)
-        if is_alpha_sig and alpha_ann < -0.035:
+        # Regla 3: alpha negativo significativo
+        if is_alpha_sig and alpha_ann < ALPHA_SELL_MAX:
             return {
                 "verdict": "VENDER",
                 "color": "bearish",
@@ -403,8 +403,8 @@ class SectorAnalyzer:
                 "reason": f"Alpha negativo persistente ({alpha_ann*100:.1f}%, p={alpha_pval:.3f}). Retorno inferior a las primas de riesgo asumidas."
             }
 
-        # Rule 4: Excessive volatility/beta with insufficient expected return
-        if beta_mkt > 1.40 and ke < 0.10:
+        # Regla 4: beta alta sin retorno esperado que la compense
+        if beta_mkt > BETA_SELL_MIN and ke < KE_SELL_LOW:
             return {
                 "verdict": "VENDER",
                 "color": "bearish",
@@ -412,7 +412,6 @@ class SectorAnalyzer:
                 "reason": f"Alta sensibilidad al mercado (β={beta_mkt:.2f}) sin retorno esperado suficiente ({ke*100:.1f}%)."
             }
 
-        # Default: Equilibrium / Hold
         return {
             "verdict": "MANTENER",
             "color": "neutral",

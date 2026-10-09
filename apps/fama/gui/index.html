@@ -22,7 +22,7 @@
 
     <div class="controls-section">
       <div class="sector-dropdown-wrapper">
-        <select id="sectorDropdown" class="select-sector" onchange="onSectorDropdownChange(this.value)">
+        <select id="sectorDropdown" class="select-sector" data-glossary="sector_select" onchange="onSectorDropdownChange(this.value)">
           <option value="" disabled selected>📊 Sectores S&P 500 (11)...</option>
           <option value="tech">💻 Tecnología de la Información (XLK)</option>
           <option value="financials">🏦 Finanzas & Banca (XLF)</option>
@@ -38,17 +38,17 @@
         </select>
       </div>
 
-      <div class="search-box">
-        <input type="text" id="tickerInput" class="search-input" value="AAPL" placeholder="TICKER" maxlength="8">
+      <div class="search-box" data-glossary="ticker">
+        <input type="text" id="tickerInput" class="search-input" value="AAPL" placeholder="TICKER" maxlength="8" aria-label="Ticker">
       </div>
 
-      <select id="modelSelect" class="select-control" onchange="runAnalysis()">
+      <select id="modelSelect" class="select-control" data-glossary="model" onchange="runAnalysis()" aria-label="Modelo">
         <option value="FF5" selected>Fama-French 5 Factores (2015)</option>
         <option value="FF3">Fama-French 3 Factores (1993)</option>
         <option value="CARHART4">Carhart 4 Factores (Momentum)</option>
       </select>
 
-      <select id="periodSelect" class="select-control" onchange="runAnalysis()">
+      <select id="periodSelect" class="select-control" data-glossary="period" onchange="runAnalysis()" aria-label="Muestra">
         <option value="2y">Muestra: 2 Años</option>
         <option value="3y" selected>Muestra: 3 Años</option>
         <option value="5y">Muestra: 5 Años</option>
@@ -67,19 +67,23 @@
     </button>
     <button class="tab-btn" id="btnSectorsTab" onclick="switchTab('sectorsTab', this)">
       <span>Radar Sectorial S&P 500</span>
-      <span class="tab-badge" id="tabSectorBadge">XLK</span>
+      <span class="tab-badge" id="tabSectorBadge" data-glossary="etf">XLK</span>
     </button>
     <button class="tab-btn" onclick="switchTab('econometricsTab', this)">
       <span>Diagnóstico Econométrico</span>
-      <span class="tab-badge" id="tabR2Badge">R²: --</span>
+      <span class="tab-badge" id="tabR2Badge" data-glossary="r2">R²: --</span>
     </button>
     <button class="tab-btn" onclick="switchTab('backtestTab', this)">
       <span>Testeo Fuera de Muestra (Backtesting)</span>
-      <span class="tab-badge" id="tabErrBadge">Error: --</span>
+      <span class="tab-badge" id="tabErrBadge" data-glossary="bt_error">Error: --</span>
     </button>
     <button class="tab-btn" onclick="switchTab('factorsTab', this)">
       <span>Biblioteca & Factores Oficiales</span>
     </button>
+    <button class="tab-btn" onclick="switchTab('guideTab', this)">
+      <span>Guía de Indicadores</span>
+    </button>
+    <div class="tabs-hint">ⓘ Pasa el cursor sobre los textos <b>subrayados</b> para ver qué miden y cómo usarlos</div>
   </nav>
 
   <!-- Main Container -->
@@ -87,39 +91,39 @@
 
     <!-- ================= TAB 1: VALUACIÓN & COTIZACIÓN ================= -->
     <section id="valuationTab" class="tab-content active">
-      
+
       <!-- Company Banner & KPIs -->
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-label">Precio Actual de Mercado</div>
+          <div class="kpi-label" data-glossary="price">Precio Actual de Mercado</div>
           <div class="kpi-value" id="kpiPrice">$0.00</div>
           <div class="kpi-subtext" id="kpiCompanyInfo">Cargando cotización...</div>
         </div>
 
         <div class="kpi-card emerald">
-          <div class="kpi-label">Costo de Equity (kₑ / Retorno Esperado)</div>
+          <div class="kpi-label" data-glossary="ke">Costo de Equity (kₑ / Retorno Esperado)</div>
           <div class="kpi-value" id="kpiCostEquity">0.00%</div>
-          <div class="kpi-subtext" id="kpiRfText">Tasa Libre de Riesgo (Rf): --</div>
+          <div class="kpi-subtext" id="kpiRfText" data-glossary="rf">Tasa Libre de Riesgo (Rf): --</div>
         </div>
 
         <div class="kpi-card amber">
-          <div class="kpi-label">Precio Objetivo Teórico (1 Año)</div>
+          <div class="kpi-label" data-glossary="target_price">Precio Objetivo Teórico (1 Año)</div>
           <div class="kpi-value" id="kpiTargetPrice">$0.00</div>
           <div class="kpi-subtext" id="kpiTargetReturn">Retorno proyectado: --</div>
         </div>
 
         <div class="kpi-card purple">
-          <div class="kpi-label">Alpha de Jensen (Anualizado)</div>
+          <div class="kpi-label" data-glossary="alpha">Alpha de Jensen (Anualizado)</div>
           <div class="kpi-value" id="kpiAlpha">0.00%</div>
-          <div class="kpi-subtext" id="kpiAlphaSig">p-valor: --</div>
+          <div class="kpi-subtext" id="kpiAlphaSig" data-glossary="pvalue">p-valor: --</div>
         </div>
 
         <div class="kpi-card">
-          <div class="kpi-label">Estado de Valuación Fama-French</div>
+          <div class="kpi-label" data-glossary="valuation_status">Estado de Valuación Fama-French</div>
           <div class="kpi-value" style="font-size: 15px; margin-top: 4px;" id="kpiValuationBadge">
             <span class="badge badge-neutral">Evaluando</span>
           </div>
-          <div class="kpi-subtext" id="kpiValuationDetail">Basado en primas de riesgo sistemáticas</div>
+          <div class="kpi-subtext" id="kpiValuationDetail" data-glossary="ci95">Basado en primas de riesgo sistemáticas</div>
         </div>
       </div>
 
@@ -129,9 +133,9 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">
-              <span>Trayectoria Histórica y Cono de Proyección a 1 Año (IC 95%)</span>
+              <span data-glossary="cone">Trayectoria Histórica y Cono de Proyección a 1 Año (IC 95%)</span>
             </div>
-            <span class="badge badge-neutral" id="modelNameBadge">Fama-French 5 Factores</span>
+            <span class="badge badge-neutral" id="modelNameBadge" data-glossary="model">Fama-French 5 Factores</span>
           </div>
           <div class="chart-container">
             <canvas id="priceTrajectoryChart"></canvas>
@@ -141,10 +145,13 @@
         <!-- Right: Factor Beta Sensitivity -->
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Sensibilidad a Factores de Riesgo (Betas)</div>
-            <span class="badge badge-neutral" id="obsCountBadge">-- Obs</span>
+            <div class="card-title"><span data-glossary="beta">Sensibilidad a Factores de Riesgo (Betas)</span></div>
+            <div class="card-header-actions">
+              <span class="badge badge-warning" id="proxyBadge" data-glossary="proxy" style="display: none;">-- días estimados</span>
+              <span class="badge badge-neutral" id="obsCountBadge" data-glossary="obs">-- Obs</span>
+            </div>
           </div>
-          
+
           <div id="factorSensitivityContainer" style="display: flex; flex-direction: column; gap: 12px;">
             <!-- Dynamically populated factor sensitivity rows -->
           </div>
@@ -162,10 +169,10 @@
               <thead>
                 <tr>
                   <th>Horizonte</th>
-                  <th class="numeric">Precio Esperado</th>
-                  <th class="numeric">IC 95% Inferior</th>
-                  <th class="numeric">IC 95% Superior</th>
-                  <th class="numeric">Retorno Teórico</th>
+                  <th class="numeric" data-glossary="expected_price">Precio Esperado</th>
+                  <th class="numeric" data-glossary="ci95">IC 95% Inferior</th>
+                  <th class="numeric" data-glossary="ci95">IC 95% Superior</th>
+                  <th class="numeric" data-glossary="theoretical_return">Retorno Teórico</th>
                 </tr>
               </thead>
               <tbody id="valuationHorizonsTable">
@@ -177,16 +184,16 @@
 
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Descomposición de la Tasa de Descuento (kₑ)</div>
+            <div class="card-title"><span data-glossary="ke">Descomposición de la Tasa de Descuento (kₑ)</span></div>
           </div>
           <div class="data-table-container">
             <table class="data-table">
               <thead>
                 <tr>
                   <th>Componente</th>
-                  <th class="numeric">Beta (β)</th>
-                  <th class="numeric">Prima Anual E[F]</th>
-                  <th class="numeric">Aporte a kₑ</th>
+                  <th class="numeric" data-glossary="beta">Beta (β)</th>
+                  <th class="numeric" data-glossary="factor_premium">Prima Anual E[F]</th>
+                  <th class="numeric" data-glossary="contribution">Aporte a kₑ</th>
                 </tr>
               </thead>
               <tbody id="costEquityBreakdownTable">
@@ -201,14 +208,14 @@
 
     <!-- ================= TAB: RADAR SECTORIAL S&P 500 ================= -->
     <section id="sectorsTab" class="tab-content">
-      
+
       <!-- Sector Header & KPI Summary -->
       <div class="card">
         <div class="card-header">
           <div>
             <div class="card-title" style="font-size: 15px;">
               <span id="sectorHeaderTitle">Tecnología de la Información</span>
-              <span class="badge badge-bullish" id="sectorHeaderEtf">ETF: XLK</span>
+              <span class="badge badge-bullish" id="sectorHeaderEtf" data-glossary="etf">ETF: XLK</span>
             </div>
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="sectorHeaderDesc">
               Semiconductores, software empresarial, hardware y servicios cloud.
@@ -224,29 +231,29 @@
 
         <div class="kpi-grid">
           <div class="kpi-card emerald">
-            <div class="kpi-label">Retorno Esperado Promedio Sector</div>
+            <div class="kpi-label" data-glossary="sec_avg_ke">Retorno Esperado Promedio Sector</div>
             <div class="kpi-value" id="secKpiAvgKe">0.00%</div>
             <div class="kpi-subtext">Tasa de descuento media del sector (kₑ)</div>
           </div>
 
           <div class="kpi-card">
-            <div class="kpi-label">Beta de Mercado Promedio</div>
+            <div class="kpi-label" data-glossary="sec_avg_beta">Beta de Mercado Promedio</div>
             <div class="kpi-value" id="secKpiAvgBeta">1.00</div>
             <div class="kpi-subtext">Sensibilidad sistemática media (β_MKT)</div>
           </div>
 
           <div class="kpi-card purple">
-            <div class="kpi-label">Alpha Promedio del Sector</div>
+            <div class="kpi-label" data-glossary="sec_avg_alpha">Alpha Promedio del Sector</div>
             <div class="kpi-value" id="secKpiAvgAlpha">0.00%</div>
             <div class="kpi-subtext">Retorno anormal anualizado medio</div>
           </div>
 
           <div class="kpi-card amber">
-            <div class="kpi-label">Distribución de Decisiones</div>
+            <div class="kpi-label" data-glossary="sec_decisions">Distribución de Decisiones</div>
             <div class="kpi-value" style="font-size: 16px; margin-top: 4px;" id="secKpiDecisions">
-              <span class="badge badge-bullish" id="secBuyCount">0 COMPRAR</span>
-              <span class="badge badge-neutral" id="secHoldCount">0 MANTENER</span>
-              <span class="badge badge-bearish" id="secSellCount">0 VENDER</span>
+              <span class="badge badge-bullish" id="secBuyCount" data-glossary="verdict_buy">0 COMPRAR</span>
+              <span class="badge badge-neutral" id="secHoldCount" data-glossary="verdict_hold">0 MANTENER</span>
+              <span class="badge badge-bearish" id="secSellCount" data-glossary="verdict_sell">0 VENDER</span>
             </div>
             <div class="kpi-subtext">Recomendaciones cuantitativas activas</div>
           </div>
@@ -264,16 +271,16 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Ticker</th>
+                <th data-glossary="ticker">Ticker</th>
                 <th>Compañía</th>
-                <th class="numeric">Precio Actual</th>
-                <th class="numeric">Retorno Esperado (E[R])</th>
-                <th class="numeric">Beta Mercado (β)</th>
-                <th class="numeric">Beta Tamaño (SMB)</th>
-                <th class="numeric">Beta Valor (HML)</th>
-                <th class="numeric">Alpha Anual (α)</th>
-                <th class="numeric">P/E Ratio</th>
-                <th style="min-width: 240px;">Decisión Financiera & Justificación</th>
+                <th class="numeric" data-glossary="price">Precio Actual</th>
+                <th class="numeric" data-glossary="ke">Retorno Esperado (E[R])</th>
+                <th class="numeric" data-glossary="mkt-rf">Beta Mercado (β)</th>
+                <th class="numeric" data-glossary="smb">Beta Tamaño (SMB)</th>
+                <th class="numeric" data-glossary="hml">Beta Valor (HML)</th>
+                <th class="numeric" data-glossary="alpha">Alpha Anual (α)</th>
+                <th class="numeric" data-glossary="pe">P/E Ratio</th>
+                <th style="min-width: 240px;" data-glossary="decision_rule">Decisión Financiera & Justificación</th>
                 <th style="text-align: center;">Terminal</th>
               </tr>
             </thead>
@@ -288,15 +295,15 @@
 
     <!-- ================= TAB 2: DIAGNÓSTICO ECONOMÉTRICO ================= -->
     <section id="econometricsTab" class="tab-content">
-      
+
       <!-- Regression Summary Card -->
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Resultados de Regresión MCO con Errores Estándar Robustos (HAC Newey-West)</div>
+          <div class="card-title"><span data-glossary="ols">Resultados de Regresión MCO con Errores Estándar Robustos (HAC Newey-West)</span></div>
           <div style="display: flex; gap: 8px;">
-            <span class="badge badge-bullish" id="summaryR2">R²: --</span>
-            <span class="badge badge-neutral" id="summaryAdjR2">Adj R²: --</span>
-            <span class="badge badge-neutral" id="summaryFStat">F-Stat: --</span>
+            <span class="badge badge-bullish" id="summaryR2" data-glossary="r2">R²: --</span>
+            <span class="badge badge-neutral" id="summaryAdjR2" data-glossary="adj_r2">Adj R²: --</span>
+            <span class="badge badge-neutral" id="summaryFStat" data-glossary="fstat">F-Stat: --</span>
           </div>
         </div>
 
@@ -305,12 +312,12 @@
             <thead>
               <tr>
                 <th>Factor</th>
-                <th class="numeric">Coeficiente (β)</th>
-                <th class="numeric">Error Est. (HAC)</th>
-                <th class="numeric">Estadístico t</th>
-                <th class="numeric">p-valor</th>
-                <th class="numeric">IC 95% [Inf, Sup]</th>
-                <th>Significancia</th>
+                <th class="numeric" data-glossary="coef">Coeficiente (β)</th>
+                <th class="numeric" data-glossary="hac">Error Est. (HAC)</th>
+                <th class="numeric" data-glossary="tstat">Estadístico t</th>
+                <th class="numeric" data-glossary="pvalue">p-valor</th>
+                <th class="numeric" data-glossary="coef_ci">IC 95% [Inf, Sup]</th>
+                <th data-glossary="significance">Significancia</th>
               </tr>
             </thead>
             <tbody id="olsCoefficientsTable">
@@ -324,7 +331,7 @@
       <div class="kpi-grid">
         <div class="diag-card">
           <div class="diag-title">
-            <span>Durbin-Watson (Autocorrelación)</span>
+            <span data-glossary="durbin_watson">Durbin-Watson (Autocorrelación)</span>
             <span class="badge badge-neutral" id="dwBadge">d = --</span>
           </div>
           <div class="diag-desc" id="dwDesc">Analizando autocorrelación de residuos...</div>
@@ -332,7 +339,7 @@
 
         <div class="diag-card">
           <div class="diag-title">
-            <span>Breusch-Godfrey (Serial p-lags)</span>
+            <span data-glossary="breusch_godfrey">Breusch-Godfrey (Serial p-lags)</span>
             <span class="badge badge-neutral" id="bgBadge">p = --</span>
           </div>
           <div class="diag-desc" id="bgDesc">Test de autocorrelación serial de orden superior...</div>
@@ -340,7 +347,7 @@
 
         <div class="diag-card">
           <div class="diag-title">
-            <span>Breusch-Pagan (Heterocedasticidad)</span>
+            <span data-glossary="breusch_pagan">Breusch-Pagan (Heterocedasticidad)</span>
             <span class="badge badge-neutral" id="bpBadge">p = --</span>
           </div>
           <div class="diag-desc" id="bpDesc">Comprobando constancia en la varianza del error...</div>
@@ -348,7 +355,7 @@
 
         <div class="diag-card">
           <div class="diag-title">
-            <span>Jarque-Bera (Normalidad)</span>
+            <span data-glossary="jarque_bera">Jarque-Bera (Normalidad)</span>
             <span class="badge badge-neutral" id="jbBadge">p = --</span>
           </div>
           <div class="diag-desc" id="jbDesc">Comprobando asimetría y curtosis en residuos...</div>
@@ -359,7 +366,7 @@
       <div class="grid-equal">
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Serie Temporal de Residuos (εₜ = Rₜ - R̂ₜ)</div>
+            <div class="card-title"><span data-glossary="resid_series">Serie Temporal de Residuos (εₜ = Rₜ - R̂ₜ)</span></div>
           </div>
           <div class="chart-container-sm">
             <canvas id="residualsTimeSeriesChart"></canvas>
@@ -368,7 +375,7 @@
 
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Distribución de Residuos vs Curva Normal Teórica</div>
+            <div class="card-title"><span data-glossary="resid_hist">Distribución de Residuos vs Curva Normal Teórica</span></div>
           </div>
           <div class="chart-container-sm">
             <canvas id="residualsHistogramChart"></canvas>
@@ -380,22 +387,22 @@
 
     <!-- ================= TAB 3: BACKTESTING & ERROR ESTIMATIVO ================= -->
     <section id="backtestTab" class="tab-content">
-      
+
       <!-- Backtest Configuration Box -->
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Configuración del Experimento Fuera de Muestra (Out-of-Sample Backtest)</div>
-          <span class="badge badge-neutral">Cero Sesgo de Anticipación (Strict Look-ahead Bias Prevention)</span>
+          <div class="card-title"><span data-glossary="backtest">Configuración del Experimento Fuera de Muestra (Out-of-Sample Backtest)</span></div>
+          <span class="badge badge-neutral" data-glossary="lookahead">Calibración sin sesgo de anticipación</span>
         </div>
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Fecha de Corte (T₀)</label>
+            <label class="form-label" data-glossary="cutoff" for="btCutoffDate">Fecha de Corte (T₀)</label>
             <input type="date" id="btCutoffDate" class="form-input" value="2025-06-01">
           </div>
 
           <div class="form-group">
-            <label class="form-label">Ventana de Calibración Previa</label>
+            <label class="form-label" data-glossary="train_window" for="btTrainWindow">Ventana de Calibración Previa</label>
             <select id="btTrainWindow" class="select-control">
               <option value="252" selected>1 Año de Historia Previa (252 días)</option>
               <option value="504">2 Años de Historia Previa (504 días)</option>
@@ -404,7 +411,7 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Horizonte de Evaluación Posterior</label>
+            <label class="form-label" data-glossary="test_horizon" for="btTestHorizon">Horizonte de Evaluación Posterior</label>
             <select id="btTestHorizon" class="select-control">
               <option value="21">1 Mes Posterior (21 días)</option>
               <option value="63" selected>3 Meses Posteriores (63 días)</option>
@@ -424,31 +431,31 @@
       <!-- Backtest Error KPI Cards -->
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-label">Precio al Corte (T₀)</div>
+          <div class="kpi-label" data-glossary="bt_p0">Precio al Corte (T₀)</div>
           <div class="kpi-value" id="btP0Price">$0.00</div>
           <div class="kpi-subtext" id="btCutoffDateText">Fecha: --</div>
         </div>
 
         <div class="kpi-card emerald">
-          <div class="kpi-label">Precio Real al Fin del Horizonte</div>
+          <div class="kpi-label" data-glossary="bt_actual">Precio Real al Fin del Horizonte</div>
           <div class="kpi-value" id="btActualFinalPrice">$0.00</div>
           <div class="kpi-subtext" id="btActualReturnText">Retorno real de mercado: --</div>
         </div>
 
         <div class="kpi-card amber">
-          <div class="kpi-label">Precio Estimado por Fama-French</div>
+          <div class="kpi-label" data-glossary="bt_pred">Precio Estimado por Fama-French</div>
           <div class="kpi-value" id="btPredFinalPrice">$0.00</div>
           <div class="kpi-subtext" id="btPredReturnText">Retorno estimado: --</div>
         </div>
 
         <div class="kpi-card rose">
-          <div class="kpi-label">Error Estimativo al Cierre</div>
+          <div class="kpi-label" data-glossary="bt_error">Error Estimativo al Cierre</div>
           <div class="kpi-value" id="btFinalErrorPct">0.00%</div>
           <div class="kpi-subtext" id="btFinalErrorDollar">Diferencia: $0.00</div>
         </div>
 
         <div class="kpi-card purple">
-          <div class="kpi-label">Métricas de Desvío (MAPE / RMSE)</div>
+          <div class="kpi-label">Métricas de Desvío (<span class="gl" data-glossary="mape">MAPE</span> / <span class="gl" data-glossary="rmse">RMSE</span>)</div>
           <div class="kpi-value" id="btMapeVal" style="font-size: 19px;">MAPE: 0.00%</div>
           <div class="kpi-subtext" id="btRmseVal">RMSE: $0.00 | TE: 0.00%</div>
         </div>
@@ -457,10 +464,10 @@
       <!-- Backtest Visual Chart -->
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Contraste Temporal: Trayectoria Real vs Estimación Fama-French (Cono IC 95%)</div>
+          <div class="card-title"><span data-glossary="backtest">Contraste Temporal: Trayectoria Real vs Estimación Fama-French (Cono IC 95%)</span></div>
           <div style="display: flex; gap: 8px;">
-            <span class="badge badge-neutral" id="btCoverageBadge">Cobertura IC 95%: --%</span>
-            <span class="badge badge-neutral" id="btDirectionBadge">Acierto de Dirección: --</span>
+            <span class="badge badge-neutral" id="btCoverageBadge" data-glossary="coverage">Cobertura IC 95%: --%</span>
+            <span class="badge badge-neutral" id="btDirectionBadge" data-glossary="direction">Acierto de Dirección: --</span>
           </div>
         </div>
         <div class="chart-container" style="height: 380px;">
@@ -478,12 +485,12 @@
             <thead>
               <tr>
                 <th>Fecha</th>
-                <th class="numeric">Precio Real de Mercado</th>
-                <th class="numeric">Precio Estimado (F-F)</th>
-                <th class="numeric">Error en Dólares ($)</th>
-                <th class="numeric">Error Porcentual (%)</th>
-                <th class="numeric">Banda IC 95% Inferior</th>
-                <th class="numeric">Banda IC 95% Superior</th>
+                <th class="numeric" data-glossary="bt_actual">Precio Real de Mercado</th>
+                <th class="numeric" data-glossary="bt_pred">Precio Estimado (F-F)</th>
+                <th class="numeric" data-glossary="err_dollar">Error en Dólares ($)</th>
+                <th class="numeric" data-glossary="err_pct">Error Porcentual (%)</th>
+                <th class="numeric" data-glossary="ci95">Banda IC 95% Inferior</th>
+                <th class="numeric" data-glossary="ci95">Banda IC 95% Superior</th>
               </tr>
             </thead>
             <tbody id="backtestDailyTable">
@@ -497,34 +504,40 @@
 
     <!-- ================= TAB 4: FACTORES OFICIALES ================= -->
     <section id="factorsTab" class="tab-content">
-      
+
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Biblioteca de Datos Académicos Oficiales de Kenneth French (Dartmouth College)</div>
+          <div class="card-title"><span data-glossary="ff_library">Biblioteca de Datos Académicos Oficiales de Kenneth French (Dartmouth College)</span></div>
           <button class="btn-primary" onclick="refreshFactorsData()">Actualizar Factores</button>
         </div>
-        
+
         <p style="color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
-          Los factores sistemáticos utilizados por esta aplicación provienen directamente del repositorio oficial mantenido por el 
-          Profesor Kenneth R. French en la <strong>Tuck School of Business en Dartmouth College</strong>, el estándar de oro en finanzas cuantitativas 
+          Los factores sistemáticos utilizados por esta aplicación provienen directamente del repositorio oficial mantenido por el
+          Profesor Kenneth R. French en la <strong>Tuck School of Business en Dartmouth College</strong>, el estándar de oro en finanzas cuantitativas
           y econometría financiera internacional.
         </p>
 
         <div class="kpi-grid" style="margin-bottom: 20px;">
           <div class="kpi-card">
-            <div class="kpi-label">Última Fecha Disponible</div>
+            <div class="kpi-label" data-glossary="ff_latest">Última Fecha Disponible</div>
             <div class="kpi-value" id="ffLatestDate" style="font-size: 18px;">--</div>
-            <div class="kpi-subtext">Datos oficiales Dartmouth + Proxies de mercado</div>
+            <div class="kpi-subtext" id="ffOfficialText">Datos oficiales Dartmouth + Proxies de mercado</div>
           </div>
 
           <div class="kpi-card emerald">
-            <div class="kpi-label">Observaciones Totales</div>
+            <div class="kpi-label" data-glossary="ff_obs">Observaciones Totales</div>
             <div class="kpi-value" id="ffObsCount" style="font-size: 18px;">--</div>
-            <div class="kpi-subtext">Desde 1926 a la actualidad</div>
+            <div class="kpi-subtext">Desde 1963 a la actualidad</div>
           </div>
 
           <div class="kpi-card amber">
-            <div class="kpi-label">Estado de Caché Local</div>
+            <div class="kpi-label" data-glossary="proxy">Días Estimados con ETFs</div>
+            <div class="kpi-value" id="ffProxyDays" style="font-size: 18px;">--</div>
+            <div class="kpi-subtext">Aún no publicados por Dartmouth</div>
+          </div>
+
+          <div class="kpi-card purple">
+            <div class="kpi-label" data-glossary="ff_cache">Estado de Caché Local</div>
             <div class="kpi-value" id="ffCacheStatus" style="font-size: 18px;">Sincronizado</div>
             <div class="kpi-subtext">Almacenado localmente para arranque instantáneo</div>
           </div>
@@ -542,45 +555,73 @@
             </thead>
             <tbody>
               <tr>
-                <td class="mono" style="color: var(--accent-cyan); font-weight: 700;">Mkt-RF</td>
+                <td class="mono" style="color: var(--accent-cyan); font-weight: 700;"><span class="gl" data-glossary="mkt-rf">Mkt-RF</span></td>
                 <td>Prima de Riesgo de Mercado</td>
                 <td>Retorno ponderado por valor de todas las acciones de CRSP en NYSE, AMEX y NASDAQ menos la tasa de Letras del Tesoro a 1 mes.</td>
                 <td>Mide la exposición al riesgo sistemático macroeconómico no diversificable.</td>
               </tr>
               <tr>
-                <td class="mono" style="color: var(--accent-emerald); font-weight: 700;">SMB</td>
+                <td class="mono" style="color: var(--accent-emerald); font-weight: 700;"><span class="gl" data-glossary="smb">SMB</span></td>
                 <td>Small Minus Big (Tamaño)</td>
                 <td>Retorno promedio de las 3 carteras de pequeñas empresas menos el retorno promedio de las 3 carteras de grandes empresas.</td>
                 <td>Captura la prima histórica por invertir en compañías de menor capitalización bursátil.</td>
               </tr>
               <tr>
-                <td class="mono" style="color: var(--accent-amber); font-weight: 700;">HML</td>
+                <td class="mono" style="color: var(--accent-amber); font-weight: 700;"><span class="gl" data-glossary="hml">HML</span></td>
                 <td>High Minus Low (Valor)</td>
                 <td>Diferencial de retorno entre acciones con alto ratio Valor Libro/Mercado (Value) y bajo ratio (Growth).</td>
                 <td>Captura la prima de riesgo o ineficiencia asociada a empresas subvaluadas frente a las de alto crecimiento.</td>
               </tr>
               <tr>
-                <td class="mono" style="color: var(--accent-purple); font-weight: 700;">RMW</td>
+                <td class="mono" style="color: var(--accent-purple); font-weight: 700;"><span class="gl" data-glossary="rmw">RMW</span></td>
                 <td>Robust Minus Weak (Rentabilidad)</td>
                 <td>Diferencial entre empresas con rentabilidad operativa robusta y empresas con rentabilidad operativa débil.</td>
                 <td>Incorporado en 2015. Premia la calidad contable y generación neta de flujo operativo.</td>
               </tr>
               <tr>
-                <td class="mono" style="color: var(--accent-blue); font-weight: 700;">CMA</td>
+                <td class="mono" style="color: var(--accent-blue); font-weight: 700;"><span class="gl" data-glossary="cma">CMA</span></td>
                 <td>Conservative Minus Aggressive (Inversión)</td>
                 <td>Diferencial entre firmas con baja tasa de crecimiento de activos (conservadoras) y aquellas con alta tasa de inversión (agresivas).</td>
                 <td>Premia la disciplina de capital frente a la sobreexpansión destructora de valor.</td>
               </tr>
               <tr>
-                <td class="mono" style="color: var(--accent-rose); font-weight: 700;">MOM</td>
+                <td class="mono" style="color: var(--accent-rose); font-weight: 700;"><span class="gl" data-glossary="mom">MOM</span></td>
                 <td>Momentum (Carhart 1997)</td>
                 <td>Rendimiento de las carteras ganadoras en los últimos 12 meses menos el rendimiento de las perdedoras.</td>
                 <td>Refleja la inercia temporal y comportamiento de seguimiento de tendencias.</td>
+              </tr>
+              <tr>
+                <td class="mono" style="color: var(--text-muted); font-weight: 700;"><span class="gl" data-glossary="rf">RF</span></td>
+                <td>Tasa Libre de Riesgo</td>
+                <td>Rendimiento de las Letras del Tesoro de EE.UU. a 1 mes.</td>
+                <td>Base del retorno exigido: kₑ = Rf + compensación por los riesgos de los factores.</td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
+
+    </section>
+
+    <!-- ================= TAB 5: GUÍA DE INDICADORES ================= -->
+    <section id="guideTab" class="tab-content">
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Cómo leer esta terminal</div>
+          <input type="text" id="guideSearchInput" placeholder="Buscar indicador (ej. alpha, SMB, p-valor)..." class="form-input" style="width: 290px;" oninput="renderGuide(this.value)" aria-label="Buscar indicador">
+        </div>
+
+        <div class="guide-intro">
+          <div class="guide-step"><b><span class="n">1</span>Elegir qué analizar</b>Ingresa un ticker, el modelo (FF3, FF5 o Carhart) y la muestra, y pulsa Calcular.</div>
+          <div class="guide-step"><b><span class="n">2</span>Entender el riesgo</b>Mira los betas y el kₑ: de dónde viene el retorno que el mercado exige a esa acción.</div>
+          <div class="guide-step"><b><span class="n">3</span>Buscar desvíos</b>Revisa el alpha junto a su p-valor: solo si es significativo (p &lt; 0,05) es creíble que no sea azar.</div>
+          <div class="guide-step"><b><span class="n">4</span>Validar antes de confiar</b>Usa el diagnóstico econométrico y el backtesting en varias fechas para ver si el modelo es fiable para esa acción.</div>
+        </div>
+        <p class="guide-disclaimer">Esta terminal es una herramienta de análisis cuantitativo con datos históricos. No constituye asesoramiento financiero ni garantiza resultados futuros.</p>
+      </div>
+
+      <div id="guideContainer"></div>
 
     </section>
 
@@ -593,7 +634,7 @@
       <span id="footerConnectionStatus">Motor Econométrico Python Conectado</span>
     </div>
     <div id="footerTickerDetails">Ticker: AAPL | NYSE/NASDAQ Live Feeds</div>
-    <div>Fama-French Multi-Factor Quantitative Engine v2.0</div>
+    <div>Fama-French Multi-Factor Quantitative Engine v2.1</div>
   </footer>
 
   <!-- Loading Overlay Spinner -->
@@ -603,7 +644,12 @@
     <div class="loader-subtext" id="loadingSubtext">Alineando retornos con factores de Kenneth French...</div>
   </div>
 
+  <!-- Avisos -->
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
   <script src="js/web_adapter.js"></script>
+<script src="js/glossary.js"></script>
+  <script src="js/tooltips.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>
 </body>

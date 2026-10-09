@@ -4,9 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QUANT BSM - Terminal Econométrico de Commodities y Opciones</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
     <link rel="stylesheet" href="style.css">
     <script src="/shared/nav_banner.js"></script>
-    <script src="chart.min.js"></script>
+    <script src="chart.min.js" defer></script>
+    <script src="web_adapter.js" defer></script>
+    <script src="glossary.js" defer></script>
+    <script src="app.js" defer></script>
 </head>
 <body class="bg-dark text-slate-100 antialiased font-sans">
     <!-- BARRA SUPERIOR INSTITUCIONAL -->
@@ -28,8 +34,8 @@
                 <span class="font-semibold text-emerald-400">FEEDS OFICIALES:</span>
                 <span class="text-slate-300">CME • NYMEX • ICE • EURONEXT</span>
             </div>
-            <div class="rate-pill">
-                <span class="text-slate-400">Tasa Libre Riesgo (13W T-Bill):</span>
+            <div class="rate-pill" data-tip="rate">
+                <span class="text-slate-400 tl">Tasa Libre Riesgo (13W T-Bill):</span>
                 <span id="headerRiskFreeRate" class="font-mono text-cyan-400 font-bold">4.02%</span>
             </div>
         </div>
@@ -54,6 +60,9 @@
                     Modelos & Fórmulas
                 </button>
             </nav>
+            <button id="btnToggleTips" class="tips-toggle active" type="button" aria-pressed="true" title="Activar o desactivar las fichas de ayuda al pasar el mouse">
+                <span class="tips-dot"></span> Ayuda contextual
+            </button>
         </div>
     </header>
 
@@ -67,6 +76,8 @@
 
         <!-- ==================== TAB 1: TERMINAL EN VIVO ==================== -->
         <div id="tab-live" class="tab-pane active">
+            <p class="help-hint">💡 Pasa el mouse sobre cualquier término <span class="tl">subrayado</span> (Garman-Klass, Delta, IV, Strike…) para ver qué significa, su fórmula, cómo usarlo y una lectura con tus datos actuales.</p>
+
             <!-- Barra de Control del Commodity Activo -->
             <div class="grid-layout-live">
                 <!-- PANEL IZQUIERDO: Cotizacion y Estimaciones de Volatilidad -->
@@ -78,22 +89,22 @@
                             <span id="activeCommTicker" class="text-xs font-mono text-slate-400">GC=F / ETF Opciones: GLD</span>
                         </div>
                         <div class="text-right">
-                            <div id="activeCommPrice" class="text-3xl font-mono font-bold text-white">$2,654.20</div>
+                            <div id="activeCommPrice" class="text-3xl font-mono font-bold text-white" data-tip="spot">$2,654.20</div>
                             <div id="activeCommChange" class="text-sm font-mono text-emerald-400 font-semibold">+12.40 (+0.47%)</div>
                         </div>
                     </div>
 
                     <div class="quote-stats-grid mt-4">
-                        <div class="stat-box">
-                            <span class="stat-label">Rango Diario (H/L)</span>
+                        <div class="stat-box" data-tip="range_hl">
+                            <span class="stat-label tl">Rango Diario (H/L)</span>
                             <span id="activeCommHighLow" class="stat-val font-mono">$2,641.50 - $2,662.80</span>
                         </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Volumen Contratos</span>
+                        <div class="stat-box" data-tip="volume_contracts">
+                            <span class="stat-label tl">Volumen Contratos</span>
                             <span id="activeCommVolume" class="stat-val font-mono">148,290</span>
                         </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Unidad de Medida</span>
+                        <div class="stat-box" data-tip="unit_measure">
+                            <span class="stat-label tl">Unidad de Medida</span>
                             <span id="activeCommUnit" class="stat-val font-mono">USD/oz troy</span>
                         </div>
                         <div class="stat-box">
@@ -104,22 +115,22 @@
 
                     <!-- Volatilidades Econometricas del Activo -->
                     <div class="mt-4 pt-3 border-t border-slate-800">
-                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Estimadores de Volatilidad Histórica (60D Anualizada):</div>
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2" data-tip="hv_window"><span class="tl">Estimadores de Volatilidad Histórica (60D Anualizada):</span></div>
                         <div class="vol-estimators-grid">
-                            <div class="vol-estimator-card">
-                                <span class="text-xs text-slate-400">Garman-Klass (OHLC)</span>
+                            <div class="vol-estimator-card" data-tip="garman_klass">
+                                <span class="text-xs text-slate-400 tl">Garman-Klass (OHLC)</span>
                                 <span id="volGarmanKlass" class="text-lg font-mono font-bold text-amber-400">18.4%</span>
-                                <span class="text-[10px] text-slate-500">8x mas eficiente</span>
+                                <span class="text-[10px] text-slate-500">~8x más eficiente</span>
                             </div>
-                            <div class="vol-estimator-card">
-                                <span class="text-xs text-slate-400">Parkinson (High-Low)</span>
+                            <div class="vol-estimator-card" data-tip="parkinson">
+                                <span class="text-xs text-slate-400 tl">Parkinson (High-Low)</span>
                                 <span id="volParkinson" class="text-lg font-mono font-bold text-cyan-400">18.1%</span>
                                 <span class="text-[10px] text-slate-500">Rango intradiario</span>
                             </div>
-                            <div class="vol-estimator-card">
-                                <span class="text-xs text-slate-400">Close-to-Close Realizada</span>
+                            <div class="vol-estimator-card" data-tip="close_to_close">
+                                <span class="text-xs text-slate-400 tl">Close-to-Close Realizada</span>
                                 <span id="volRealized" class="text-lg font-mono font-bold text-slate-300">18.9%</span>
-                                <span class="text-[10px] text-slate-500">Desvio estandar</span>
+                                <span class="text-[10px] text-slate-500">Desvío estándar</span>
                             </div>
                         </div>
                     </div>
@@ -141,7 +152,7 @@
                     <!-- Controles de Valoracion -->
                     <div class="valuation-controls-bar">
                         <div class="control-item">
-                            <label>Modelo de Valoración:</label>
+                            <label for="selectModel" data-tip="model"><span class="tl">Modelo de Valoración:</span></label>
                             <select id="selectModel" class="form-select font-mono">
                                 <option value="black76" selected>Black-76 (Futuros Oficial CME/ICE)</option>
                                 <option value="bsm">Black-Scholes-Merton (Spot / ETFs)</option>
@@ -149,21 +160,21 @@
                         </div>
 
                         <div class="control-item">
-                            <label>Vencimiento:</label>
+                            <label for="selectExpiry" data-tip="expiry"><span class="tl">Vencimiento:</span></label>
                             <select id="selectExpiry" class="form-select font-mono">
                                 <!-- Llenado por JS -->
                             </select>
                         </div>
 
                         <div class="control-item">
-                            <label>Precio de Ejercicio (Strike K):</label>
+                            <label for="inputStrike" data-tip="strike"><span class="tl">Precio de Ejercicio (Strike K):</span></label>
                             <div class="input-with-stepper">
                                 <input type="number" id="inputStrike" class="form-input font-mono" step="0.5" value="2650">
                             </div>
                         </div>
 
                         <div class="control-item">
-                            <label>Gráfico Payoff Activo:</label>
+                            <label data-tip="payoff_chart"><span class="tl">Gráfico Payoff Activo:</span></label>
                             <div class="toggle-group">
                                 <button type="button" class="btn-toggle active" id="btnToggleCall" data-type="call">CALL</button>
                                 <button type="button" class="btn-toggle" id="btnTogglePut" data-type="put">PUT</button>
@@ -171,48 +182,51 @@
                         </div>
                     </div>
 
+                    <!-- Subyacente real de la valoracion (ETF con opciones reales o futuro con cadena simulada) -->
+                    <div id="underlyingBanner" class="underlying-banner" data-tip="underlying_banner">Cargando subyacente…</div>
+
                     <!-- PANEL DUAL DE PRIMAS JUSTAS TEÓRICAS (CALL & PUT SIMULTANEAS) -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                         <!-- TARJETA PRIMA JUSTA CALL -->
-                        <div class="card p-4 border-t-4 border-emerald-500 bg-slate-900/80">
+                        <div class="card p-4 border-t-4 border-emerald-500 bg-slate-900/80" data-side="call">
                             <div class="flex items-center justify-between pb-2 border-b border-slate-800">
                                 <div class="flex items-center gap-2">
                                     <span class="badge-call text-xs uppercase px-2 py-0.5 font-bold">CALL</span>
                                     <span class="text-xs text-slate-300 font-semibold">Opción de Compra</span>
                                 </div>
-                                <div class="text-right">
+                                <div class="text-right" data-tip="status">
                                     <span id="callStatusBadge" class="badge-signal text-xs">EN PARIDAD</span>
                                 </div>
                             </div>
 
                             <div class="mt-3 flex items-baseline justify-between">
-                                <div>
-                                    <span class="text-xs text-slate-400 uppercase tracking-wider block">Prima Justa Teórica:</span>
+                                <div data-tip="fair_price">
+                                    <span class="text-xs text-slate-400 uppercase tracking-wider block tl">Prima Justa Teórica:</span>
                                     <div class="text-3xl font-mono font-extrabold text-emerald-400" id="callFairPrice">$0.0000</div>
                                 </div>
                                 <div class="text-right">
-                                    <span class="text-xs text-slate-400 block">Cotización Mercado:</span>
+                                    <span class="text-xs text-slate-400 block tl" data-tip="market_price">Cotización Mercado:</span>
                                     <span class="text-lg font-mono font-bold text-white" id="callMarketPrice">$0.00</span>
-                                    <div class="text-xs font-mono" id="callDiffText">Dif: $0.00</div>
+                                    <div class="text-xs font-mono" id="callDiffText" data-tip="diff">Dif: $0.00</div>
                                 </div>
                             </div>
 
                             <!-- Desglose de Valor Intrínseco y Extrínseco -->
                             <div class="grid grid-cols-2 gap-2 mt-3 p-2 bg-slate-950/60 rounded text-xs font-mono">
-                                <div>
-                                    <span class="text-slate-400 block text-[10px]">Valor Intrínseco:</span>
+                                <div data-tip="intrinsic">
+                                    <span class="text-slate-400 block text-[10px] tl">Valor Intrínseco:</span>
                                     <span id="callIntrinsic" class="text-slate-200 font-semibold">$0.00</span>
                                 </div>
-                                <div>
-                                    <span class="text-slate-400 block text-[10px]">Valor Tiempo (Extrínseco):</span>
+                                <div data-tip="time_value">
+                                    <span class="text-slate-400 block text-[10px] tl">Valor Tiempo (Extrínseco):</span>
                                     <span id="callTimeValue" class="text-slate-200 font-semibold">$0.00</span>
                                 </div>
-                                <div>
-                                    <span class="text-slate-400 block text-[10px]">Vol. Implícita (IV):</span>
+                                <div data-tip="iv">
+                                    <span class="text-slate-400 block text-[10px] tl">Vol. Implícita (IV):</span>
                                     <span id="callIV" class="text-amber-400 font-semibold">0.0%</span>
                                 </div>
-                                <div>
-                                    <span class="text-slate-400 block text-[10px]">Prob. Ejercicio (ITM):</span>
+                                <div data-tip="prob_itm">
+                                    <span class="text-slate-400 block text-[10px] tl">Prob. Ejercicio (ITM):</span>
                                     <span id="callPoP" class="text-emerald-400 font-semibold">0.0%</span>
                                 </div>
                             </div>
@@ -221,74 +235,78 @@
                             <div class="mt-3 pt-2 border-t border-slate-800">
                                 <span class="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Griegas Analíticas Call:</span>
                                 <div class="grid grid-cols-5 gap-1 text-center font-mono text-xs">
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Delta (Δ)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="delta">
+                                        <span class="text-[9px] text-slate-500 block tl">Delta (Δ)</span>
                                         <span id="callDelta" class="text-emerald-400 font-bold">+0.00</span>
                                     </div>
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Gamma (Γ)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="gamma">
+                                        <span class="text-[9px] text-slate-500 block tl">Gamma (Γ)</span>
                                         <span id="callGamma" class="text-cyan-400 font-bold">0.00</span>
                                     </div>
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Vega (𝒱)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="vega">
+                                        <span class="text-[9px] text-slate-500 block tl">Vega (𝒱)</span>
                                         <span id="callVega" class="text-purple-400 font-bold">$0.00</span>
                                     </div>
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Theta (Θ)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="theta">
+                                        <span class="text-[9px] text-slate-500 block tl">Theta (Θ)</span>
                                         <span id="callTheta" class="text-rose-400 font-bold">-$0.00</span>
                                     </div>
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Rho (ρ)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="rho">
+                                        <span class="text-[9px] text-slate-500 block tl">Rho (ρ)</span>
                                         <span id="callRho" class="text-amber-400 font-bold">$0.00</span>
                                     </div>
                                 </div>
+                                <div class="d-row">
+                                    <span data-tip="d1"><span class="tl">d₁</span> = <b id="callD1">0.000</b></span>
+                                    <span data-tip="d2"><span class="tl">d₂</span> = <b id="callD2">0.000</b></span>
+                                </div>
                             </div>
-                            <div class="mt-2 text-right">
-                                <span class="text-[11px] text-slate-400">Break-Even Call: </span>
+                            <div class="mt-2 text-right" data-tip="breakeven">
+                                <span class="text-[11px] text-slate-400 tl">Break-Even Call: </span>
                                 <span id="callBreakEven" class="font-mono text-xs font-bold text-white">$0.00</span>
                             </div>
                         </div>
 
                         <!-- TARJETA PRIMA JUSTA PUT -->
-                        <div class="card p-4 border-t-4 border-rose-500 bg-slate-900/80">
+                        <div class="card p-4 border-t-4 border-rose-500 bg-slate-900/80" data-side="put">
                             <div class="flex items-center justify-between pb-2 border-b border-slate-800">
                                 <div class="flex items-center gap-2">
                                     <span class="badge-put text-xs uppercase px-2 py-0.5 font-bold">PUT</span>
                                     <span class="text-xs text-slate-300 font-semibold">Opción de Venta</span>
                                 </div>
-                                <div class="text-right">
+                                <div class="text-right" data-tip="status">
                                     <span id="putStatusBadge" class="badge-signal text-xs">EN PARIDAD</span>
                                 </div>
                             </div>
 
                             <div class="mt-3 flex items-baseline justify-between">
-                                <div>
-                                    <span class="text-xs text-slate-400 uppercase tracking-wider block">Prima Justa Teórica:</span>
+                                <div data-tip="fair_price">
+                                    <span class="text-xs text-slate-400 uppercase tracking-wider block tl">Prima Justa Teórica:</span>
                                     <div class="text-3xl font-mono font-extrabold text-rose-400" id="putFairPrice">$0.0000</div>
                                 </div>
                                 <div class="text-right">
-                                    <span class="text-xs text-slate-400 block">Cotización Mercado:</span>
+                                    <span class="text-xs text-slate-400 block tl" data-tip="market_price">Cotización Mercado:</span>
                                     <span class="text-lg font-mono font-bold text-white" id="putMarketPrice">$0.00</span>
-                                    <div class="text-xs font-mono" id="putDiffText">Dif: $0.00</div>
+                                    <div class="text-xs font-mono" id="putDiffText" data-tip="diff">Dif: $0.00</div>
                                 </div>
                             </div>
 
                             <!-- Desglose de Valor Intrínseco y Extrínseco -->
                             <div class="grid grid-cols-2 gap-2 mt-3 p-2 bg-slate-950/60 rounded text-xs font-mono">
-                                <div>
-                                    <span class="text-slate-400 block text-[10px]">Valor Intrínseco:</span>
+                                <div data-tip="intrinsic">
+                                    <span class="text-slate-400 block text-[10px] tl">Valor Intrínseco:</span>
                                     <span id="putIntrinsic" class="text-slate-200 font-semibold">$0.00</span>
                                 </div>
-                                <div>
-                                    <span class="text-slate-400 block text-[10px]">Valor Tiempo (Extrínseco):</span>
+                                <div data-tip="time_value">
+                                    <span class="text-slate-400 block text-[10px] tl">Valor Tiempo (Extrínseco):</span>
                                     <span id="putTimeValue" class="text-slate-200 font-semibold">$0.00</span>
                                 </div>
-                                <div>
-                                    <span class="text-slate-400 block text-[10px]">Vol. Implícita (IV):</span>
+                                <div data-tip="iv">
+                                    <span class="text-slate-400 block text-[10px] tl">Vol. Implícita (IV):</span>
                                     <span id="putIV" class="text-amber-400 font-semibold">0.0%</span>
                                 </div>
-                                <div>
-                                    <span class="text-slate-400 block text-[10px]">Prob. Ejercicio (ITM):</span>
+                                <div data-tip="prob_itm">
+                                    <span class="text-slate-400 block text-[10px] tl">Prob. Ejercicio (ITM):</span>
                                     <span id="putPoP" class="text-rose-400 font-semibold">0.0%</span>
                                 </div>
                             </div>
@@ -297,39 +315,43 @@
                             <div class="mt-3 pt-2 border-t border-slate-800">
                                 <span class="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Griegas Analíticas Put:</span>
                                 <div class="grid grid-cols-5 gap-1 text-center font-mono text-xs">
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Delta (Δ)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="delta">
+                                        <span class="text-[9px] text-slate-500 block tl">Delta (Δ)</span>
                                         <span id="putDelta" class="text-rose-400 font-bold">-0.00</span>
                                     </div>
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Gamma (Γ)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="gamma">
+                                        <span class="text-[9px] text-slate-500 block tl">Gamma (Γ)</span>
                                         <span id="putGamma" class="text-cyan-400 font-bold">0.00</span>
                                     </div>
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Vega (𝒱)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="vega">
+                                        <span class="text-[9px] text-slate-500 block tl">Vega (𝒱)</span>
                                         <span id="putVega" class="text-purple-400 font-bold">$0.00</span>
                                     </div>
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Theta (Θ)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="theta">
+                                        <span class="text-[9px] text-slate-500 block tl">Theta (Θ)</span>
                                         <span id="putTheta" class="text-rose-400 font-bold">-$0.00</span>
                                     </div>
-                                    <div class="bg-slate-950/40 p-1 rounded">
-                                        <span class="text-[9px] text-slate-500 block">Rho (ρ)</span>
+                                    <div class="bg-slate-950/40 p-1 rounded" data-tip="rho">
+                                        <span class="text-[9px] text-slate-500 block tl">Rho (ρ)</span>
                                         <span id="putRho" class="text-amber-400 font-bold">$0.00</span>
                                     </div>
                                 </div>
+                                <div class="d-row">
+                                    <span data-tip="d1"><span class="tl">d₁</span> = <b id="putD1">0.000</b></span>
+                                    <span data-tip="d2"><span class="tl">d₂</span> = <b id="putD2">0.000</b></span>
+                                </div>
                             </div>
-                            <div class="mt-2 text-right">
-                                <span class="text-[11px] text-slate-400">Break-Even Put: </span>
+                            <div class="mt-2 text-right" data-tip="breakeven">
+                                <span class="text-[11px] text-slate-400 tl">Break-Even Put: </span>
                                 <span id="putBreakEven" class="font-mono text-xs font-bold text-white">$0.00</span>
                             </div>
                         </div>
                     </div>
 
                     <!-- AUDITORIA DE PARIDAD PUT-CALL EN TIEMPO REAL -->
-                    <div class="mt-3 p-3 bg-slate-900/60 border border-slate-800 rounded-lg flex items-center justify-between text-xs font-mono">
+                    <div class="mt-3 p-3 bg-slate-900/60 border border-slate-800 rounded-lg flex items-center justify-between text-xs font-mono" data-tip="parity">
                         <div class="flex items-center gap-2">
-                            <span class="text-cyan-400 font-bold">PARIDAD PUT-CALL:</span>
+                            <span class="text-cyan-400 font-bold tl">PARIDAD PUT-CALL:</span>
                             <span class="text-slate-300">C_justa - P_justa = <span id="parityObservedDiff" class="text-white font-bold">$0.00</span></span>
                             <span class="text-slate-500">| Objetivo Teórico: <span id="parityTargetDiff">$0.00</span></span>
                         </div>
@@ -341,7 +363,7 @@
                     <!-- GRAFICO DE PAYOFF INTERACTIVO -->
                     <div class="mt-4">
                         <div class="flex justify-between items-center mb-1">
-                            <span class="text-xs font-semibold text-slate-400">Perfil de Rendimiento (P&L Payoff al Vencimiento vs Prima Justa Hoy):</span>
+                            <span class="text-xs font-semibold text-slate-400 tl" data-tip="payoff_chart">Perfil de Rendimiento (P&L Payoff al Vencimiento vs Prima Justa Hoy):</span>
                             <span class="text-xs font-mono text-slate-500" id="payoffChartSubtitle">Curva de P&L = Valor Intrínseco - Prima</span>
                         </div>
                         <div class="chart-container-md">
@@ -355,7 +377,7 @@
             <div class="card p-4 mt-4">
                 <div class="flex justify-between items-center mb-3">
                     <div>
-                        <h3 class="text-base font-bold text-white">Cadena Oficial de Opciones (Calls & Puts)</h3>
+                        <h3 class="text-base font-bold text-white">Cadena de Opciones (Calls & Puts)</h3>
                         <p class="text-xs text-slate-400">Comparación de precios de mercado vs valor teórico BSM/Black-76 y desvíos de prima</p>
                     </div>
                     <div class="flex items-center gap-2">
@@ -365,24 +387,26 @@
                     </div>
                 </div>
 
+                <div id="chainSourceBanner" class="chain-banner"></div>
+
                 <div class="table-responsive">
                     <table class="options-chain-table" id="optionsTable">
                         <thead>
                             <tr>
-                                <th>Tipo</th>
-                                <th>Strike (K)</th>
-                                <th>Bid</th>
-                                <th>Ask</th>
-                                <th>Último (Mid)</th>
-                                <th>Prima Justa</th>
-                                <th>Desvío %</th>
-                                <th>Vol. Imp. (IV)</th>
-                                <th>Delta (Δ)</th>
-                                <th>Gamma (Γ)</th>
-                                <th>Theta (Θ)</th>
-                                <th>Volumen</th>
-                                <th>Open Int.</th>
-                                <th>Estado Paridad</th>
+                                <th data-tip="ch_type"><span class="tl">Tipo</span></th>
+                                <th data-tip="ch_strike"><span class="tl">Strike (K)</span></th>
+                                <th data-tip="ch_bid"><span class="tl">Bid</span></th>
+                                <th data-tip="ch_ask"><span class="tl">Ask</span></th>
+                                <th data-tip="ch_mid"><span class="tl">Último (Mid)</span></th>
+                                <th data-tip="ch_fair"><span class="tl">Prima Justa</span></th>
+                                <th data-tip="ch_dev"><span class="tl">Desvío %</span></th>
+                                <th data-tip="ch_iv"><span class="tl">Vol. Imp. (IV)</span></th>
+                                <th data-tip="ch_delta"><span class="tl">Delta (Δ)</span></th>
+                                <th data-tip="ch_gamma"><span class="tl">Gamma (Γ)</span></th>
+                                <th data-tip="ch_theta"><span class="tl">Theta (Θ)</span></th>
+                                <th data-tip="ch_volume"><span class="tl">Volumen</span></th>
+                                <th data-tip="ch_oi"><span class="tl">Open Int.</span></th>
+                                <th data-tip="ch_status"><span class="tl">Estado Paridad</span></th>
                             </tr>
                         </thead>
                         <tbody id="optionsTableBody">
@@ -404,11 +428,11 @@
                         <h2 class="text-xl font-bold text-white">Validador Econométrico & Auditoría Histórica</h2>
                         <p class="text-xs text-slate-400 mt-1">
                             Evalúe rigurosamente la ecuación Black-Scholes-Merton y Black-76 en una fecha pasada:
-                            el sistema estima el valor de la opción utilizando <strong>únicamente datos anteriores a esa fecha</strong>
+                            el sistema estima el valor de la opción utilizando <strong data-tip="econ_lookahead" class="tl">únicamente datos anteriores a esa fecha</strong>
                             (sin sesgo de anticipación o <em>lookahead bias</em>) y compara el resultado con lo que efectivamente ocurrió en el mercado.
                         </p>
                     </div>
-                    <div class="badge-math">
+                    <div class="badge-math" data-tip="econ_error">
                         Test de Residuos: eₜ = Realizado - Estimado
                     </div>
                 </div>
@@ -416,14 +440,14 @@
                 <!-- FORMULARIO DE CONTROL ECONOMETRICO -->
                 <div class="econometric-controls-grid mt-4">
                     <div class="control-box">
-                        <label>Commodity a Testear:</label>
+                        <label for="econCommSelect">Commodity a Testear:</label>
                         <select id="econCommSelect" class="form-select font-mono">
                             <!-- Llenado por JS -->
                         </select>
                     </div>
 
                     <div class="control-box">
-                        <label>Fecha Pasada de Estimación (t₀):</label>
+                        <label for="econTargetDate" data-tip="econ_t0"><span class="tl">Fecha Pasada de Estimación (t₀):</span></label>
                         <input type="date" id="econTargetDate" class="form-input font-mono" value="2026-03-01">
                         <div class="quick-date-buttons mt-1">
                             <button type="button" class="btn-xs btn-outline date-preset" data-days="30">-30d</button>
@@ -434,7 +458,7 @@
                     </div>
 
                     <div class="control-box">
-                        <label>Tipo de Opción:</label>
+                        <label for="econOptionType" data-tip="ch_type"><span class="tl">Tipo de Opción:</span></label>
                         <select id="econOptionType" class="form-select font-mono">
                             <option value="call" selected>CALL (Opción de Compra)</option>
                             <option value="put">PUT (Opción de Venta)</option>
@@ -442,7 +466,7 @@
                     </div>
 
                     <div class="control-box">
-                        <label>Moneyness (K / S en t₀):</label>
+                        <label for="econMoneyness" data-tip="econ_moneyness"><span class="tl">Moneyness (K / S en t₀):</span></label>
                         <select id="econMoneyness" class="form-select font-mono">
                             <option value="0.90">En Dinero Profundo (ITM 10%, K=0.90*S)</option>
                             <option value="0.95">En el Dinero (ITM 5%, K=0.95*S)</option>
@@ -453,7 +477,7 @@
                     </div>
 
                     <div class="control-box">
-                        <label>Horizonte a Vencimiento (T):</label>
+                        <label for="econHorizonDays" data-tip="econ_horizon"><span class="tl">Horizonte a Vencimiento (T):</span></label>
                         <select id="econHorizonDays" class="form-select font-mono">
                             <option value="15">15 Días (Corto plazo)</option>
                             <option value="30" selected>30 Días (Mensual estándar)</option>
@@ -463,7 +487,7 @@
                     </div>
 
                     <div class="control-box">
-                        <label>Ventana Muestral Previa (W):</label>
+                        <label for="econWindowDays" data-tip="econ_window"><span class="tl">Ventana Muestral Previa (W):</span></label>
                         <select id="econWindowDays" class="form-select font-mono">
                             <option value="30">30 Días previos a t₀</option>
                             <option value="60">60 Días previos a t₀</option>
@@ -474,7 +498,7 @@
                     </div>
 
                     <div class="control-box">
-                        <label>Estimador Econométrico de σ:</label>
+                        <label for="econVolEstimator" data-tip="econ_estimator"><span class="tl">Estimador Econométrico de σ:</span></label>
                         <select id="econVolEstimator" class="form-select font-mono">
                             <option value="garman_klass" selected>Garman-Klass (OHLC, Máxima Eficiencia)</option>
                             <option value="parkinson">Parkinson (Rango High-Low)</option>
@@ -483,7 +507,7 @@
                     </div>
 
                     <div class="control-box">
-                        <label>Ecuación:</label>
+                        <label for="econModel" data-tip="econ_equation"><span class="tl">Ecuación:</span></label>
                         <select id="econModel" class="form-select font-mono">
                             <option value="black76" selected>Black-76 (Futuros Oficial)</option>
                             <option value="bsm">Black-Scholes-Merton (Carry)</option>
@@ -506,32 +530,32 @@
                     <!-- PASO 1: ESTIMACION EX-ANTE EN t0 -->
                     <div class="card p-4 border-l-4 border-cyan-500">
                         <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs uppercase font-bold text-cyan-400 tracking-wider">PASO 1: ESTIMACIÓN EX-ANTE EN t₀</span>
+                            <span class="text-xs uppercase font-bold text-cyan-400 tracking-wider tl" data-tip="econ_step1">PASO 1: ESTIMACIÓN EX-ANTE EN t₀</span>
                             <span id="econAuditDateT0" class="font-mono text-xs text-slate-400">Fecha: 2026-03-01</span>
                         </div>
                         <p class="text-xs text-slate-300 mb-3">
                             Información disponible <strong>exclusivamente antes de esa fecha</strong>:
                         </p>
                         <div class="grid grid-cols-2 gap-2 text-sm font-mono">
-                            <div class="bg-slate-900/60 p-2 rounded">
-                                <span class="text-xs text-slate-400 block">Precio Subyacente S(t₀):</span>
+                            <div class="bg-slate-900/60 p-2 rounded" data-tip="econ_S0">
+                                <span class="text-xs text-slate-400 block tl">Precio Subyacente S(t₀):</span>
                                 <span id="econAuditPriceT0" class="text-white font-bold">$0.00</span>
                             </div>
-                            <div class="bg-slate-900/60 p-2 rounded">
-                                <span class="text-xs text-slate-400 block">Strike Evaluado (K):</span>
+                            <div class="bg-slate-900/60 p-2 rounded" data-tip="econ_K">
+                                <span class="text-xs text-slate-400 block tl">Strike Evaluado (K):</span>
                                 <span id="econAuditStrikeK" class="text-white font-bold">$0.00</span>
                             </div>
-                            <div class="bg-slate-900/60 p-2 rounded">
-                                <span class="text-xs text-slate-400 block">Volatilidad Estimada (σ̂):</span>
+                            <div class="bg-slate-900/60 p-2 rounded" data-tip="econ_sigma">
+                                <span class="text-xs text-slate-400 block tl">Volatilidad Estimada (σ̂):</span>
                                 <span id="econAuditSigma" class="text-amber-400 font-bold">0.00%</span>
                             </div>
-                            <div class="bg-slate-900/60 p-2 rounded">
-                                <span class="text-xs text-slate-400 block">Tasa Libre de Riesgo (r):</span>
+                            <div class="bg-slate-900/60 p-2 rounded" data-tip="econ_rate">
+                                <span class="text-xs text-slate-400 block tl">Tasa Libre de Riesgo (r):</span>
                                 <span id="econAuditRate" class="text-cyan-400 font-bold">0.00%</span>
                             </div>
                         </div>
-                        <div class="mt-3 p-3 bg-cyan-950/40 border border-cyan-800/40 rounded-lg text-center">
-                            <span class="text-xs text-cyan-300 block uppercase font-semibold">Valor Teórico Estimado por la Ecuación:</span>
+                        <div class="mt-3 p-3 bg-cyan-950/40 border border-cyan-800/40 rounded-lg text-center" data-tip="econ_theo">
+                            <span class="text-xs text-cyan-300 block uppercase font-semibold tl">Valor Teórico Estimado por la Ecuación:</span>
                             <span id="econAuditTheoPrice" class="text-2xl font-mono font-extrabold text-cyan-400">$0.0000</span>
                         </div>
                     </div>
@@ -539,32 +563,32 @@
                     <!-- PASO 2: REALIDAD EMPIRICA Y ERROR -->
                     <div class="card p-4 border-l-4 border-purple-500">
                         <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs uppercase font-bold text-purple-400 tracking-wider">PASO 2: REALIDAD EMPÍRICA Y ERROR</span>
+                            <span class="text-xs uppercase font-bold text-purple-400 tracking-wider tl" data-tip="econ_step2">PASO 2: REALIDAD EMPÍRICA Y ERROR</span>
                             <span class="font-mono text-xs text-slate-400">A Vencimiento (t₀ + T)</span>
                         </div>
                         <p class="text-xs text-slate-300 mb-3">
                             Resultado observado en los datos reales del mercado:
                         </p>
                         <div class="grid grid-cols-2 gap-2 text-sm font-mono">
-                            <div class="bg-slate-900/60 p-2 rounded">
-                                <span class="text-xs text-slate-400 block">Precio Final Real S(T):</span>
+                            <div class="bg-slate-900/60 p-2 rounded" data-tip="econ_ST">
+                                <span class="text-xs text-slate-400 block tl">Precio Final Real S(T):</span>
                                 <span id="econAuditPriceST" class="text-white font-bold">$0.00</span>
                             </div>
-                            <div class="bg-slate-900/60 p-2 rounded">
-                                <span class="text-xs text-slate-400 block">Payoff Terminal Real:</span>
+                            <div class="bg-slate-900/60 p-2 rounded" data-tip="econ_payoff">
+                                <span class="text-xs text-slate-400 block tl">Payoff Terminal Real:</span>
                                 <span id="econAuditPayoffTerm" class="text-white font-bold">$0.00</span>
                             </div>
-                            <div class="bg-slate-900/60 p-2 rounded">
-                                <span class="text-xs text-slate-400 block">Payoff Descontado a t₀:</span>
+                            <div class="bg-slate-900/60 p-2 rounded" data-tip="econ_payoff_disc">
+                                <span class="text-xs text-slate-400 block tl">Payoff Descontado a t₀:</span>
                                 <span id="econAuditDiscountedPayoff" class="text-emerald-400 font-bold">$0.00</span>
                             </div>
-                            <div class="bg-slate-900/60 p-2 rounded">
-                                <span class="text-xs text-slate-400 block">Error Porcentual:</span>
+                            <div class="bg-slate-900/60 p-2 rounded" data-tip="econ_pct_error">
+                                <span class="text-xs text-slate-400 block tl">Error Porcentual:</span>
                                 <span id="econAuditPctError" class="font-bold">0.00%</span>
                             </div>
                         </div>
-                        <div class="mt-3 p-3 bg-purple-950/40 border border-purple-800/40 rounded-lg text-center" id="boxPunctualError">
-                            <span class="text-xs text-purple-300 block uppercase font-semibold">Error Puntual de Estimación (Real - Teórico):</span>
+                        <div class="mt-3 p-3 bg-purple-950/40 border border-purple-800/40 rounded-lg text-center" id="boxPunctualError" data-tip="econ_error">
+                            <span class="text-xs text-purple-300 block uppercase font-semibold tl">Error Puntual de Estimación (Real - Teórico):</span>
                             <span id="econAuditPunctualError" class="text-2xl font-mono font-extrabold text-purple-300">$0.0000</span>
                         </div>
                     </div>
@@ -581,38 +605,38 @@
                     </div>
 
                     <div class="diagnostics-metrics-grid">
-                        <div class="diag-card">
-                            <div class="diag-title">RMSE (Root Mean Square Error)</div>
+                        <div class="diag-card" data-tip="rmse">
+                            <div class="diag-title tl">RMSE (Root Mean Square Error)</div>
                             <div id="diagRMSE" class="diag-val text-white font-mono">$0.00</div>
                             <div class="diag-sub">Desviación cuadrática típica</div>
                         </div>
-                        <div class="diag-card">
-                            <div class="diag-title">MAE (Mean Absolute Error)</div>
+                        <div class="diag-card" data-tip="mae">
+                            <div class="diag-title tl">MAE (Mean Absolute Error)</div>
                             <div id="diagMAE" class="diag-val text-cyan-400 font-mono">$0.00</div>
                             <div class="diag-sub">Error medio en valor absoluto</div>
                         </div>
-                        <div class="diag-card">
-                            <div class="diag-title">MAPE (%)</div>
+                        <div class="diag-card" data-tip="mape">
+                            <div class="diag-title tl">MAPE (%)</div>
                             <div id="diagMAPE" class="diag-val text-amber-400 font-mono">0.00%</div>
                             <div class="diag-sub">Error porcentual relativo</div>
                         </div>
-                        <div class="diag-card">
-                            <div class="diag-title">Sesgo Sistemático (Mean Bias ē)</div>
+                        <div class="diag-card" data-tip="bias">
+                            <div class="diag-title tl">Sesgo Sistemático (Mean Bias ē)</div>
                             <div id="diagMeanBias" class="diag-val font-mono">0.00</div>
                             <div id="diagBiasLabel" class="diag-sub text-xs">Sin sesgo estructural</div>
                         </div>
-                        <div class="diag-card">
-                            <div class="diag-title">Test de Jarque-Bera (Normalidad)</div>
+                        <div class="diag-card" data-tip="jb">
+                            <div class="diag-title tl">Test de Jarque-Bera (Normalidad)</div>
                             <div id="diagJBStat" class="diag-val text-purple-400 font-mono">JB: 0.00</div>
                             <div id="diagJBPval" class="diag-sub">p-valor: 0.0000</div>
                         </div>
-                        <div class="diag-card">
-                            <div class="diag-title">Asimetría y Curtosis</div>
+                        <div class="diag-card" data-tip="skew_kurt">
+                            <div class="diag-title tl">Asimetría y Curtosis</div>
                             <div id="diagSkewKurt" class="diag-val text-slate-200 font-mono">S: 0.0 | K: 3.0</div>
                             <div class="diag-sub">Detección de Colas Pesadas</div>
                         </div>
-                        <div class="diag-card">
-                            <div class="diag-title">Durbin-Watson (Autocorrelación)</div>
+                        <div class="diag-card" data-tip="dw">
+                            <div class="diag-title tl">Durbin-Watson (Autocorrelación)</div>
                             <div id="diagDW" class="diag-val text-emerald-400 font-mono">DW: 2.00</div>
                             <div id="diagDWStatus" class="diag-sub">Sin autocorrelación serial</div>
                         </div>
@@ -623,7 +647,7 @@
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
                     <!-- GRAFICO 1: TRAYECTORIA DEL COMMODITY -->
                     <div class="card p-4">
-                        <h4 class="text-sm font-bold text-white mb-1">Trayectoria Real del Commodity y Horizonte a Vencimiento</h4>
+                        <h4 class="text-sm font-bold text-white mb-1" data-tip="econ_path_chart"><span class="tl">Trayectoria Real del Commodity y Horizonte a Vencimiento</span></h4>
                         <p class="text-xs text-slate-400 mb-2">Comportamiento del precio del activo desde t₀ hasta la expiración</p>
                         <div class="chart-container-md">
                             <canvas id="chartEconPath"></canvas>
@@ -632,7 +656,7 @@
 
                     <!-- GRAFICO 2: HISTOGRAMA DE RESIDUOS VS CAMPANA GAUSSIANA -->
                     <div class="card p-4">
-                        <h4 class="text-sm font-bold text-white mb-1">Distribución de Residuos vs Campana Normal Teórica</h4>
+                        <h4 class="text-sm font-bold text-white mb-1" data-tip="econ_hist_chart"><span class="tl">Distribución de Residuos vs Campana Normal Teórica</span></h4>
                         <p class="text-xs text-slate-400 mb-2">Demuestra si los errores del modelo presentan leptocurtosis (colas pesadas del mercado)</p>
                         <div class="chart-container-md">
                             <canvas id="chartEconHist"></canvas>
@@ -642,7 +666,7 @@
 
                 <!-- GRAFICO 3: SERIE TEMPORAL DE VALORES TEORICOS VS REALIZADOS -->
                 <div class="card p-4 mt-4">
-                    <h4 class="text-sm font-bold text-white mb-1">Serie Temporal Histórica: Valor Teórico Estimado vs Payoff Realizado</h4>
+                    <h4 class="text-sm font-bold text-white mb-1" data-tip="econ_series_chart"><span class="tl">Serie Temporal Histórica: Valor Teórico Estimado vs Payoff Realizado</span></h4>
                     <p class="text-xs text-slate-400 mb-2">Evolución de las estimaciones en cada punto temporal del backtest</p>
                     <div class="chart-container-md">
                         <canvas id="chartEconSeries"></canvas>
@@ -658,7 +682,7 @@
                 <div class="card-header border-b border-slate-800 pb-3">
                     <div>
                         <h2 class="text-xl font-bold text-white">Calculadora Cuántica Manual & Análisis de Sensibilidad</h2>
-                        <p class="text-xs text-slate-400 mt-1">Experimente interactivamente variando parámetros para observar el comportamiento dinámico de la prima y las griegas.</p>
+                        <p class="text-xs text-slate-400 mt-1">Experimente interactivamente variando parámetros para observar el comportamiento dinámico de la prima y las griegas. Pasa el mouse sobre cada dato para ver qué significa con tus valores actuales.</p>
                     </div>
                 </div>
 
@@ -666,35 +690,41 @@
                     <!-- Controles Manuales -->
                     <div class="md:col-span-1 space-y-4">
                         <div>
-                            <label class="text-xs text-slate-400 block mb-1">Precio Subyacente (S o F):</label>
-                            <input type="number" id="calcInputS" class="form-input font-mono" value="100.0" step="1">
+                            <label for="calcInputS" class="text-xs text-slate-400 block mb-1" data-tip="spot"><span class="tl">Precio Subyacente (S o F):</span></label>
+                            <input type="number" id="calcInputS" class="form-input font-mono" value="100.0" step="1" min="0">
                         </div>
                         <div>
-                            <label class="text-xs text-slate-400 block mb-1">Precio de Ejercicio (Strike K):</label>
-                            <input type="number" id="calcInputK" class="form-input font-mono" value="100.0" step="1">
+                            <label for="calcInputK" class="text-xs text-slate-400 block mb-1" data-tip="strike"><span class="tl">Precio de Ejercicio (Strike K):</span></label>
+                            <input type="number" id="calcInputK" class="form-input font-mono" value="100.0" step="1" min="0">
                         </div>
                         <div>
-                            <label class="text-xs text-slate-400 block mb-1">Días al Vencimiento (T en días):</label>
-                            <input type="number" id="calcInputDays" class="form-input font-mono" value="30" step="1">
+                            <label for="calcInputDays" class="text-xs text-slate-400 block mb-1" data-tip="expiry"><span class="tl">Días al Vencimiento (T en días):</span></label>
+                            <input type="number" id="calcInputDays" class="form-input font-mono" value="30" step="1" min="0">
                         </div>
                         <div>
-                            <label class="text-xs text-slate-400 block mb-1">Volatilidad Anualizada (σ %):</label>
-                            <input type="number" id="calcInputVol" class="form-input font-mono" value="20.0" step="0.5">
+                            <label for="calcInputVol" class="text-xs text-slate-400 block mb-1" data-tip="sigma"><span class="tl">Volatilidad Anualizada (σ %):</span></label>
+                            <input type="number" id="calcInputVol" class="form-input font-mono" value="20.0" step="0.5" min="0">
                         </div>
                         <div>
-                            <label class="text-xs text-slate-400 block mb-1">Tasa Libre de Riesgo (r %):</label>
+                            <label for="calcInputRate" class="text-xs text-slate-400 block mb-1" data-tip="rate"><span class="tl">Tasa Libre de Riesgo (r %):</span></label>
                             <input type="number" id="calcInputRate" class="form-input font-mono" value="4.0" step="0.1">
                         </div>
                         <div>
-                            <label class="text-xs text-slate-400 block mb-1">Modelo Matemático:</label>
+                            <label for="calcInputModel" class="text-xs text-slate-400 block mb-1" data-tip="model"><span class="tl">Modelo Matemático:</span></label>
                             <select id="calcInputModel" class="form-select font-mono">
                                 <option value="black76" selected>Black-76 (Futuros)</option>
                                 <option value="bsm">Black-Scholes-Merton</option>
                             </select>
                         </div>
-                        <div>
-                            <label class="text-xs text-slate-400 block mb-1">Precio de Mercado Opcional (Para IV):</label>
-                            <input type="number" id="calcInputMkt" class="form-input font-mono" value="2.50" step="0.1">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label for="calcInputMktCall" class="text-xs text-slate-400 block mb-1" data-tip="calc_market"><span class="tl">Mercado CALL (opc.):</span></label>
+                                <input type="number" id="calcInputMktCall" class="form-input font-mono" value="2.50" step="0.1" min="0" placeholder="para IV">
+                            </div>
+                            <div>
+                                <label for="calcInputMktPut" class="text-xs text-slate-400 block mb-1" data-tip="calc_market"><span class="tl">Mercado PUT (opc.):</span></label>
+                                <input type="number" id="calcInputMktPut" class="form-input font-mono" value="2.20" step="0.1" min="0" placeholder="para IV">
+                            </div>
                         </div>
                     </div>
 
@@ -702,37 +732,45 @@
                     <div class="md:col-span-2 space-y-4">
                         <div class="grid grid-cols-2 gap-4">
                             <!-- Call Box -->
-                            <div class="p-4 bg-emerald-950/30 border border-emerald-800/40 rounded-xl">
+                            <div class="p-4 bg-emerald-950/30 border border-emerald-800/40 rounded-xl" data-side="call">
                                 <div class="text-xs text-emerald-400 font-bold uppercase tracking-wider mb-1">CALL (Opción de Compra)</div>
-                                <div id="calcCallPrice" class="text-3xl font-mono font-extrabold text-white">$0.00</div>
+                                <div id="calcCallPrice" class="text-3xl font-mono font-extrabold text-white" data-tip="fair_price">$0.00</div>
                                 <div class="mt-3 space-y-1 text-xs font-mono text-slate-300">
-                                    <div>Delta: <span id="calcCallDelta" class="text-emerald-400 font-bold">0.000</span></div>
-                                    <div>Gamma: <span id="calcCallGamma" class="text-cyan-400 font-bold">0.000</span></div>
-                                    <div>Vega (1%): <span id="calcCallVega" class="text-purple-400 font-bold">$0.000</span></div>
-                                    <div>Theta (día): <span id="calcCallTheta" class="text-rose-400 font-bold">$0.000</span></div>
-                                    <div>Rho (1%): <span id="calcCallRho" class="text-amber-400 font-bold">$0.000</span></div>
-                                    <div>IV Calculada: <span id="calcCallIV" class="text-white font-bold">0.0%</span></div>
+                                    <div data-tip="delta"><span class="tl">Delta</span>: <span id="calcCallDelta" class="text-emerald-400 font-bold">0.000</span></div>
+                                    <div data-tip="gamma"><span class="tl">Gamma</span>: <span id="calcCallGamma" class="text-cyan-400 font-bold">0.000</span></div>
+                                    <div data-tip="vega"><span class="tl">Vega (1%)</span>: <span id="calcCallVega" class="text-purple-400 font-bold">$0.000</span></div>
+                                    <div data-tip="theta"><span class="tl">Theta (día)</span>: <span id="calcCallTheta" class="text-rose-400 font-bold">$0.000</span></div>
+                                    <div data-tip="rho"><span class="tl">Rho (1%)</span>: <span id="calcCallRho" class="text-amber-400 font-bold">$0.000</span></div>
+                                    <div data-tip="iv"><span class="tl">IV Calculada</span>: <span id="calcCallIV" class="text-white font-bold">0.0%</span></div>
+                                    <div><span data-tip="d1" class="tl">d₁</span> = <span id="calcCallD1" class="text-white font-bold">0.000</span> &nbsp;·&nbsp; <span data-tip="d2" class="tl">d₂</span> = <span id="calcCallD2" class="text-white font-bold">0.000</span></div>
                                 </div>
                             </div>
 
                             <!-- Put Box -->
-                            <div class="p-4 bg-rose-950/30 border border-rose-800/40 rounded-xl">
+                            <div class="p-4 bg-rose-950/30 border border-rose-800/40 rounded-xl" data-side="put">
                                 <div class="text-xs text-rose-400 font-bold uppercase tracking-wider mb-1">PUT (Opción de Venta)</div>
-                                <div id="calcPutPrice" class="text-3xl font-mono font-extrabold text-white">$0.00</div>
+                                <div id="calcPutPrice" class="text-3xl font-mono font-extrabold text-white" data-tip="fair_price">$0.00</div>
                                 <div class="mt-3 space-y-1 text-xs font-mono text-slate-300">
-                                    <div>Delta: <span id="calcPutDelta" class="text-rose-400 font-bold">0.000</span></div>
-                                    <div>Gamma: <span id="calcPutGamma" class="text-cyan-400 font-bold">0.000</span></div>
-                                    <div>Vega (1%): <span id="calcPutVega" class="text-purple-400 font-bold">$0.000</span></div>
-                                    <div>Theta (día): <span id="calcPutTheta" class="text-rose-400 font-bold">$0.000</span></div>
-                                    <div>Rho (1%): <span id="calcPutRho" class="text-amber-400 font-bold">$0.000</span></div>
-                                    <div>IV Calculada: <span id="calcPutIV" class="text-white font-bold">0.0%</span></div>
+                                    <div data-tip="delta"><span class="tl">Delta</span>: <span id="calcPutDelta" class="text-rose-400 font-bold">0.000</span></div>
+                                    <div data-tip="gamma"><span class="tl">Gamma</span>: <span id="calcPutGamma" class="text-cyan-400 font-bold">0.000</span></div>
+                                    <div data-tip="vega"><span class="tl">Vega (1%)</span>: <span id="calcPutVega" class="text-purple-400 font-bold">$0.000</span></div>
+                                    <div data-tip="theta"><span class="tl">Theta (día)</span>: <span id="calcPutTheta" class="text-rose-400 font-bold">$0.000</span></div>
+                                    <div data-tip="rho"><span class="tl">Rho (1%)</span>: <span id="calcPutRho" class="text-amber-400 font-bold">$0.000</span></div>
+                                    <div data-tip="iv"><span class="tl">IV Calculada</span>: <span id="calcPutIV" class="text-white font-bold">0.0%</span></div>
+                                    <div><span data-tip="d1" class="tl">d₁</span> = <span id="calcPutD1" class="text-white font-bold">0.000</span> &nbsp;·&nbsp; <span data-tip="d2" class="tl">d₂</span> = <span id="calcPutD2" class="text-white font-bold">0.000</span></div>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Grafico de Sensibilidad -->
                         <div class="card p-3">
-                            <span class="text-xs font-semibold text-slate-400 block mb-2">Simulación de Payoff de la Calculadora:</span>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs font-semibold text-slate-400 tl" data-tip="payoff_chart">Simulación de Payoff de la Calculadora:</span>
+                                <div class="toggle-group calc-toggle">
+                                    <button type="button" class="btn-toggle active" id="calcToggleCall" data-type="call">CALL</button>
+                                    <button type="button" class="btn-toggle" id="calcTogglePut" data-type="put">PUT</button>
+                                </div>
+                            </div>
                             <div class="chart-container-sm">
                                 <canvas id="chartCalcPayoff"></canvas>
                             </div>
@@ -754,16 +792,43 @@
                     </p>
                 </div>
 
+                <!-- COMO FUNCIONA EL MODELO -->
+                <section>
+                    <h3 class="text-lg font-bold text-white mb-3">¿Cómo funciona Black-Scholes-Merton? En 5 pasos</h3>
+                    <ol class="theory-steps">
+                        <li>
+                            <span class="step-n">1</span>
+                            <div><b>Se supone cómo se mueve el precio.</b> El logaritmo del precio sigue un camino aleatorio con volatilidad <b>σ constante</b> (movimiento browniano geométrico). Consecuencia: el precio futuro tiene distribución <i>lognormal</i> y nunca es negativo.</div>
+                        </li>
+                        <li>
+                            <span class="step-n">2</span>
+                            <div><b>Se arma una cartera sin riesgo.</b> Combinando la opción con <b>Δ</b> unidades del subyacente, el riesgo de pequeños movimientos desaparece. Por no-arbitraje, esa cartera debe rendir la tasa libre de riesgo <b>r</b>. Por eso la prima <b>no depende</b> de cuánto se espera que suba el activo, solo de S, K, T, σ y r.</div>
+                        </li>
+                        <li>
+                            <span class="step-n">3</span>
+                            <div><b>Se calcula el payoff esperado.</b> Bajo la medida «neutral al riesgo» (el activo crece a r, o a r − q), se promedia lo que pagaría la opción al vencimiento: max(S − K, 0) para un call.</div>
+                        </li>
+                        <li>
+                            <span class="step-n">4</span>
+                            <div><b>Se descuenta a hoy.</b> Ese promedio se lleva a valor presente con e<sup>−rT</sup>. El resultado es la fórmula cerrada con <b>N(d₁)</b> y <b>N(d₂)</b>: el call es «lo que se recibe (S·N(d₁)) menos lo que se paga (K·N(d₂))», ambos ponderados por probabilidad.</div>
+                        </li>
+                        <li>
+                            <span class="step-n">5</span>
+                            <div><b>Se derivan las Griegas.</b> Cada una es una derivada parcial de la prima: Delta respecto de S, Gamma (segunda derivada), Vega respecto de σ, Theta respecto del tiempo y Rho respecto de r. Dicen <i>qué tan sensible</i> es la prima a cada ingrediente.</div>
+                        </li>
+                    </ol>
+                </section>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Modelo Black-76 -->
                     <div class="p-4 bg-slate-900/60 rounded-xl border border-slate-800">
-                        <h3 class="text-lg font-bold text-cyan-400 mb-2">1. Modelo Black-76 (Futuros Oficial CME/ICE)</h3>
+                        <h3 class="text-lg font-bold text-cyan-400 mb-2" data-tip="model"><span class="tl">1. Modelo Black-76 (Futuros Oficial CME/ICE)</span></h3>
                         <p class="text-xs text-slate-300 mb-3">
                             Fischer Black (1976) adaptó Black-Scholes para contratos de futuros donde no hay desembolso de capital al inicio:
                         </p>
                         <div class="font-mono text-xs bg-slate-950 p-3 rounded text-slate-200 space-y-2">
-                            <div>d₁ = [ln(F / K) + 0.5 σ² T] / (σ √T)</div>
-                            <div>d₂ = d₁ - σ √T</div>
+                            <div><span data-tip="d1" class="tl">d₁</span> = [ln(F / K) + 0.5 σ² T] / (σ √T)</div>
+                            <div><span data-tip="d2" class="tl">d₂</span> = d₁ - σ √T</div>
                             <div>C = e⁻ʳᵀ [ F Φ(d₁) - K Φ(d₂) ]</div>
                             <div>P = e⁻ʳᵀ [ K Φ(-d₂) - F Φ(-d₁) ]</div>
                         </div>
@@ -771,13 +836,13 @@
 
                     <!-- Modelo Black-Scholes-Merton -->
                     <div class="p-4 bg-slate-900/60 rounded-xl border border-slate-800">
-                        <h3 class="text-lg font-bold text-emerald-400 mb-2">2. Black-Scholes-Merton (1973 con Carry q)</h3>
+                        <h3 class="text-lg font-bold text-emerald-400 mb-2" data-tip="model"><span class="tl">2. Black-Scholes-Merton (1973 con Carry q)</span></h3>
                         <p class="text-xs text-slate-300 mb-3">
                             Modelo generalizado con costo de almacenamiento o conveniencia continuo q:
                         </p>
                         <div class="font-mono text-xs bg-slate-950 p-3 rounded text-slate-200 space-y-2">
-                            <div>d₁ = [ln(S / K) + (r - q + 0.5 σ²) T] / (σ √T)</div>
-                            <div>d₂ = d₁ - σ √T</div>
+                            <div><span data-tip="d1" class="tl">d₁</span> = [ln(S / K) + (r - q + 0.5 σ²) T] / (σ √T)</div>
+                            <div><span data-tip="d2" class="tl">d₂</span> = d₁ - σ √T</div>
                             <div>C = S e⁻ᵍᵀ Φ(d₁) - K e⁻ʳᵀ Φ(d₂)</div>
                             <div>P = K e⁻ʳᵀ Φ(-d₂) - S e⁻ᵍᵀ Φ(-d₁)</div>
                         </div>
@@ -790,8 +855,9 @@
                             Capturan el rango intradiario y superan la ineficiencia de Close-to-Close:
                         </p>
                         <div class="font-mono text-xs bg-slate-950 p-3 rounded text-slate-200 space-y-2">
-                            <div><strong>Parkinson (1980):</strong> σ² = (1 / 4 ln 2 N) Σ [ln(Hᵢ / Lᵢ)]²</div>
-                            <div><strong>Garman-Klass (1980):</strong> σ² = (1/N) Σ [ 0.5 ln(H/L)² - (2 ln 2 - 1) ln(C/O)² ]</div>
+                            <div><strong data-tip="parkinson" class="tl">Parkinson (1980):</strong> σ² = (1 / 4 ln 2 N) Σ [ln(Hᵢ / Lᵢ)]²</div>
+                            <div><strong data-tip="garman_klass" class="tl">Garman-Klass (1980):</strong> σ² = (1/N) Σ [ 0.5 ln(H/L)² - (2 ln 2 - 1) ln(C/O)² ]</div>
+                            <div><strong data-tip="close_to_close" class="tl">Close-to-Close:</strong> σ = desvío[ ln(Cₜ / Cₜ₋₁) ]</div>
                         </div>
                     </div>
 
@@ -802,18 +868,39 @@
                             Verifican empíricamente si se cumplen los supuestos de martingala y distribución lognormal:
                         </p>
                         <div class="font-mono text-xs bg-slate-950 p-3 rounded text-slate-200 space-y-2">
-                            <div><strong>Jarque-Bera:</strong> JB = (N/6) [ S² + 0.25 (K - 3)² ] ~ χ²(2)</div>
-                            <div><strong>Durbin-Watson:</strong> DW = Σ(eₜ - eₜ₋₁)² / Σ eₜ² (Autocorrelación serial)</div>
-                            <div><strong>Sesgo Medio (Bias):</strong> ē = (1/N) Σ(Realizado - Estimado)</div>
+                            <div><strong data-tip="jb" class="tl">Jarque-Bera:</strong> JB = (N/6) [ S² + 0.25 (K - 3)² ] ~ χ²(2)</div>
+                            <div><strong data-tip="dw" class="tl">Durbin-Watson:</strong> DW = Σ(eₜ - eₜ₋₁)² / Σ eₜ² (Autocorrelación serial)</div>
+                            <div><strong data-tip="bias" class="tl">Sesgo Medio (Bias):</strong> ē = (1/N) Σ(Realizado - Estimado)</div>
                         </div>
                     </div>
                 </div>
+
+                <!-- SUPUESTOS Y LIMITES -->
+                <section class="limits-box">
+                    <h3 class="text-lg font-bold text-amber-400 mb-2">⚠ Supuestos del modelo y cuándo falla</h3>
+                    <ul class="limits-list">
+                        <li><b>Volatilidad constante.</b> En la realidad cambia en el tiempo y con el strike: por eso existe la <i>sonrisa de volatilidad</i> (la IV de los strikes lejanos es mayor).</li>
+                        <li><b>Rendimientos lognormales, sin saltos.</b> Los mercados reales tienen <i>colas pesadas</i> (curtosis &gt; 3): los eventos extremos ocurren más seguido de lo que el modelo supone. El test de Jarque-Bera de la pestaña econométrica lo mide.</li>
+                        <li><b>Ejercicio solo al vencimiento (opciones europeas).</b> Las opciones de ETFs como GLD o USO son americanas: BSM es una aproximación razonable, pero no exacta.</li>
+                        <li><b>Tasa y rendimiento de conveniencia constantes</b> y sin costos de transacción. En commodities hay almacenamiento, estacionalidad (gas natural, granos) y curva de futuros: por eso se prefiere Black-76 sobre el futuro.</li>
+                        <li><b>La prima justa no es una señal de compra o venta.</b> Una diferencia contra el mercado suele indicar que la IV difiere de la volatilidad histórica, no un error del mercado.</li>
+                    </ul>
+                </section>
+
+                <!-- GLOSARIO BUSCABLE -->
+                <section>
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Glosario de índices e indicadores</h3>
+                            <p class="text-xs text-slate-400">Los mismos textos que aparecen al pasar el mouse sobre cada dato de la app.</p>
+                        </div>
+                        <input type="search" id="glossarySearch" class="form-input glossary-search" placeholder="Buscar: delta, garman, vega, IV…" aria-label="Buscar en el glosario">
+                    </div>
+                    <div id="glossaryList"></div>
+                </section>
             </div>
         </div>
 
     </main>
-
-    <script src="web_adapter.js"></script>
-    <script src="app.js"></script>
 </body>
 </html>

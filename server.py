@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Response, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -47,18 +48,10 @@ from core.sector_analyzer import SectorAnalyzer
 from backend.bridge import ApiBridge
 
 # 4. Valoracion de Acciones
-from engine.database import (
-    init_db,
-    get_all_sectors,
-    get_sector_data,
-    get_stock_by_ticker,
-    get_stock_history_df,
-    get_cached_monte_carlo,
-    save_monte_carlo_result
-)
-from engine.monte_carlo import run_monte_carlo_simulation
-from engine.econometrics import run_econometric_audit
-from engine.market_data import fetch_and_update_stock
+from engine.database import init_db, has_missing_revenue_ps
+# Los endpoints de Valoracion viven en engine/api.py (cache ETag/304, validacion de entradas,
+# semilla estable por ticker): aqui solo se registran sus funciones, sin duplicar la logica.
+import engine.api as valoracion_api
 
 
 # ==================== ENGINE INSTANCES ====================
@@ -68,53 +61,40 @@ cached_bonos_payload = {"bonds": [], "macro": {}}
 bsm_bridge = ApiBridge()
 
 class FamaController:
+    """Mismo contrato que FamaFrenchAppAPI (apps/fama/app.py), expuesto por HTTP en lugar de pywebview."""
+
     def __init__(self):
         self.fetcher = DataFetcher()
         self.sector_analyzer = SectorAnalyzer(self.fetcher)
         self.ff_factors_df = None
-        self.current_stock_df = None
         self.current_aligned_df = None
-        self.current_stock_info = None
-        self.current_ticker = None
-        self.current_model_type = "FF5"
+        self._state_lock = threading.Lock()
 
     def ensure_factors(self, force_refresh: bool = False):
-        if self.ff_factors_df is None or force_refresh:
-            self.ff_factors_df = self.fetcher.get_fama_french_factors(force_refresh=force_refresh)
+        # El fetcher cachea en disco y serializa la descarga: es barato llamarlo en cada request.
+        self.ff_factors_df = self.fetcher.get_fama_french_factors(force_refresh=force_refresh)
         return self.ff_factors_df
 
     def get_factors_info(self):
         df = self.ensure_factors()
-        return {
-            "latest_date": df["Date"].max().strftime("%Y-%m-%d"),
-            "earliest_date": df["Date"].min().strftime("%Y-%m-%d"),
-            "observations": len(df),
-            "is_cached": True
-        }
+        return {**self.fetcher.factors_status(df), "is_cached": True}
 
     def refresh_factors(self):
         df = self.ensure_factors(force_refresh=True)
-        return {
-            "success": True,
-            "latest_date": df["Date"].max().strftime("%Y-%m-%d"),
-            "observations": len(df)
-        }
+        self.fetcher._stock_cache.clear()
+        self.sector_analyzer.cache.clear()
+        return {"success": True, **self.fetcher.factors_status(df)}
 
     def analyze_stock(self, ticker: str, model_type: str = "FF5", period: str = "3y"):
         ticker_clean = ticker.strip().upper()
-        self.ensure_factors()
-        self.current_ticker = ticker_clean
-        self.current_model_type = model_type
+        factors_df = self.ensure_factors()
 
         stock_res = self.fetcher.get_stock_data(ticker_clean, period=period)
-        self.current_stock_df = stock_res["history"]
-        self.current_stock_info = stock_res["info"]
-
-        aligned = self.fetcher.align_stock_and_factors(self.current_stock_df, self.ff_factors_df)
-        self.current_aligned_df = aligned
+        stock_info = stock_res["info"]
+        aligned = self.fetcher.align_stock_and_factors(stock_res["history"], factors_df)
 
         if len(aligned) < 30:
-            return {"error": f"Datos insuficientes para {ticker_clean} (menos de 30 dias comunes)."}
+            return {"error": f"Datos insuficientes para {ticker_clean} (menos de 30 dias habiles en comun)."}
 
         engine = FamaFrenchEngine(model_type=model_type)
         estimation_res = engine.estimate(aligned, cov_type="HAC")
@@ -125,54 +105,60 @@ class FamaController:
             alpha_annual=estimation_res["alpha_annual"],
             alpha_pvalue=estimation_res["alpha_pvalue"],
             residual_std_error=estimation_res["econometrics"]["summary_metrics"]["residual_std_error"],
-            stock_info=self.current_stock_info
+            stock_info=stock_info
         )
 
+        # Objetos de statsmodels/pandas que no se pueden serializar a JSON
         estimation_res["econometrics"].pop("statsmodels_result", None)
         raw_resids = estimation_res["econometrics"].pop("raw_residuals", None)
         estimation_res["econometrics"].pop("raw_fitted", None)
 
-        timeline_dates = [d.strftime("%Y-%m-%d") for d in aligned["Date"]]
-        timeline_prices = [float(p) for p in aligned["Close"]]
-        resids_list = [float(r) for r in raw_resids] if raw_resids is not None else []
+        with self._state_lock:
+            self.current_aligned_df = aligned
+
+        proxy_days = int(aligned["Is_Proxy"].sum()) if "Is_Proxy" in aligned.columns else 0
 
         return {
             "ticker": ticker_clean,
-            "stock_info": self.current_stock_info,
-            "dates": timeline_dates,
-            "prices": timeline_prices,
-            "residuals": resids_list,
+            "stock_info": stock_info,
+            "dates": aligned["Date"].dt.strftime("%Y-%m-%d").tolist(),
+            "prices": aligned["Close"].astype(float).tolist(),
+            "residuals": [float(r) for r in raw_resids] if raw_resids is not None else [],
+            "proxy_days": proxy_days,
             "estimation": estimation_res,
             "valuation": valuation_res
         }
 
     def run_backtest(self, cutoff_date: str, train_window_days: int = 252, test_horizon_days: int = 63, model_type: str = "FF5"):
-        if self.current_aligned_df is None or self.current_aligned_df.empty:
+        with self._state_lock:
+            aligned = self.current_aligned_df
+        if aligned is None or aligned.empty:
             return {"error": "Primero debes analizar un ticker antes de ejecutar el backtest."}
 
         engine = FamaFrenchEngine(model_type=model_type)
-        factors = engine.factors
         return FamaFrenchBacktester.run_backtest(
-            aligned_df=self.current_aligned_df,
+            aligned_df=aligned,
             cutoff_date=cutoff_date,
             train_window_days=int(train_window_days),
             test_horizon_days=int(test_horizon_days),
-            factors=factors,
+            factors=engine.factors,
             cov_type="HAC"
         )
 
-    def analyze_sector(self, sector_id: str, model_type: str = "FF5", period: str = "2y"):
+    def analyze_sector(self, sector_id: str, model_type: str = "FF5", period: str = "2y", force_refresh: bool = False):
         self.ensure_factors()
-        return self.sector_analyzer.analyze_sector(sector_id, model_type, period)
+        return self.sector_analyzer.analyze_sector(sector_id, model_type, period, force_refresh=bool(force_refresh))
 
 fama_ctrl = FamaController()
 
 
 # ==================== LIFESPAN BACKGROUND WORKERS ====================
-def update_bonos_worker():
+def update_bonos_worker(force: bool = False):
+    """Punto unico de refresco de Bonos. El feed reutiliza su ultimo resultado unos segundos,
+    asi que llamarlo en cada request no martilla a BYMA/BCRA."""
     global cached_bonos_payload
     try:
-        bonds, macro = bonos_feed.process_market_data()
+        bonds, macro = bonos_feed.process_market_data(force=force)
         cached_bonos_payload = {"bonds": bonds, "macro": macro}
         print(f"[OK] Bonos actualizados: {len(bonds)} activos en memoria.")
     except Exception as e:
@@ -184,8 +170,13 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         print("[OK] Base de datos de Valoracion inicializada.")
+        if has_missing_revenue_ps():
+            from engine.data_seeder import backfill_revenue_ps
+            backfill_revenue_ps()
     except Exception as e:
         print("[AVISO] Error al inicializar DB:", e)
+    # statsmodels tarda ~1.5 s en importar y solo lo usa la pestaña de auditoria
+    threading.Thread(target=valoracion_api._warm_up_econometrics, daemon=True).start()
 
     # Initial Bonos load in background thread
     t = threading.Thread(target=update_bonos_worker, daemon=True)
@@ -204,13 +195,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# La app no usa cookies ni sesiones: con origen "*" las credenciales deben ir desactivadas
+# (la combinacion "*" + credentials es invalida segun la especificacion CORS).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Comprime HTML/JS/CSS/JSON (chart.min.js: ~205 KB -> ~70 KB). Las respuestas < 1 KB no se comprimen.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
+_VENDOR_LIBS = ("chart.min.js", "chart.umd.min.js")
 
 @app.middleware("http")
 async def add_cache_control_headers(request: Request, call_next):
@@ -220,20 +218,24 @@ async def add_cache_control_headers(request: Request, call_next):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+    elif path.endswith(_VENDOR_LIBS):
+        # Librerias de terceros: no cambian, se pueden cachear un dia entero
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    elif path.endswith((".js", ".css")):
+        # Codigo propio: el navegador cachea pero REVALIDA con ETag (304 barato) -> nunca queda desactualizado
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 
 # ==================== 1. BONOS API ENDPOINTS ====================
 @app.get("/api/data")
 def get_bonos_data():
-    global cached_bonos_payload
-    if not cached_bonos_payload.get("bonds"):
-        update_bonos_worker()
+    update_bonos_worker()
     return cached_bonos_payload
 
 @app.get("/api/refresh")
 def refresh_bonos_data():
-    update_bonos_worker()
+    update_bonos_worker(force=True)
     return cached_bonos_payload
 
 @app.get("/api/info")
@@ -258,6 +260,8 @@ def calculate_bonos_van(
         bond_item = next((b for b in cached_bonos_payload.get("bonds", []) if symbol.upper() in b["symbol"].upper()), None)
     if not bond_item:
         return {"error": f"Bono {symbol} no encontrado"}
+    if not bond_item.get("van_eligible", False):
+        return {"error": "Instrumento excluido del VAN", "reason": bond_item.get("van_exclusion_reason", "")}
     return bonos_feed.engine.calculate_van(bond_item, investment, k, inc_vt)
 
 @app.get("/api/horizon")
@@ -298,106 +302,18 @@ def calculate_bonos_horizon(years: float = 5.0):
 
 
 # ==================== 2. VALORACION DE ACCIONES API ====================
-class MonteCarloRequest(BaseModel):
-    num_simulations: int = Field(default=5000, ge=1000, le=10000)
-    rev_growth_mean: Optional[float] = None
-    rev_growth_std: Optional[float] = None
-    margin_mean: Optional[float] = None
-    margin_std: Optional[float] = None
-    tax_rate: Optional[float] = None
-    reinvestment_rate: Optional[float] = None
-
-@app.get("/api/sectors")
-def list_sectors():
-    return get_all_sectors()
-
-@app.get("/api/sectors/{sector_name}")
-def sector_stocks(sector_name: str):
-    data = get_sector_data(sector_name)
-    if not data["stocks"] and sector_name.lower() != "all":
-        raise HTTPException(status_code=404, detail=f"Sector '{sector_name}' no encontrado.")
-    return data
-
-@app.get("/api/stocks/{ticker}")
-def stock_detail(ticker: str):
-    stock = get_stock_by_ticker(ticker)
-    if not stock:
-        raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' no encontrado en la base de datos.")
-    return stock
-
-@app.post("/api/stocks/{ticker}/monte-carlo")
-def run_monte_carlo(ticker: str, params: Optional[MonteCarloRequest] = None):
-    stock = get_stock_by_ticker(ticker)
-    if not stock:
-        raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' no encontrado.")
-
-    if params is None or (
-        params.rev_growth_mean is None and 
-        params.margin_mean is None and 
-        params.num_simulations == 5000
-    ):
-        cached = get_cached_monte_carlo(ticker)
-        if cached:
-            return cached
-
-    growth_mean = params.rev_growth_mean if params and params.rev_growth_mean is not None else stock.get("rev_growth_mean", 0.08)
-    growth_std = params.rev_growth_std if params and params.rev_growth_std is not None else stock.get("rev_growth_std", 0.04)
-    margin_mean = params.margin_mean if params and params.margin_mean is not None else stock.get("margin_mean", 0.20)
-    margin_std = params.margin_std if params and params.margin_std is not None else stock.get("margin_std", 0.03)
-    tax_rate = params.tax_rate if params and params.tax_rate is not None else stock.get("tax_rate", 0.21)
-    reinv = params.reinvestment_rate if params and params.reinvestment_rate is not None else stock.get("reinvestment_rate_mean", 0.35)
-    nsim = params.num_simulations if params else 5000
-
-    sim_res = run_monte_carlo_simulation(
-        p0=stock["market_price"],
-        current_revenue_ps=stock["market_price"] * 0.25,
-        historical_growth_mean=growth_mean,
-        historical_growth_std=growth_std,
-        historical_margin_mean=margin_mean,
-        historical_margin_std=margin_std,
-        tax_rate=tax_rate,
-        reinvestment_rate_mean=reinv,
-        num_simulations=nsim,
-        random_seed=abs(hash(ticker)) % 100000
-    )
-    save_monte_carlo_result(ticker, sim_res)
-    return sim_res
-
-@app.get("/api/stocks/{ticker}/econometrics")
-def econometric_audit(ticker: str):
-    df = get_stock_history_df(ticker)
-    if df.empty:
-        raise HTTPException(status_code=404, detail=f"No hay series temporales historicas para '{ticker}'.")
-    try:
-        return run_econometric_audit(df, ticker)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en auditoria econometrica: {str(e)}")
-
-@app.get("/api/stocks/{ticker}/export-csv")
-def export_estimation_csv(ticker: str):
-    df = get_stock_history_df(ticker)
-    if df.empty:
-        raise HTTPException(status_code=404, detail=f"No hay datos para exportar de '{ticker}'.")
-    try:
-        audit_res = run_econometric_audit(df, ticker)
-        res_list = audit_res["residual_series"]
-        df["fitted_value"] = [item["fitted"] for item in res_list]
-        df["residual_error"] = [item["residual"] for item in res_list]
-        df["std_residual"] = [item["std_residual"] for item in res_list]
-    except Exception:
-        pass
-
-    stream = io.StringIO()
-    df.to_csv(stream, index=False)
-    return Response(
-        content=stream.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={ticker.upper()}_econometric_dataset.csv"}
-    )
-
-@app.post("/api/stocks/{ticker}/refresh")
-def refresh_stock_market_data(ticker: str):
-    return fetch_and_update_stock(ticker)
+# Handlers definidos en apps/valoracion/engine/api.py; se registran aqui para servirlos desde este unico servidor.
+for _path, _handler, _method in (
+    ("/api/health", valoracion_api.health_check, "GET"),
+    ("/api/sectors", valoracion_api.list_sectors, "GET"),
+    ("/api/sectors/{sector_name}", valoracion_api.sector_stocks, "GET"),
+    ("/api/stocks/{ticker}", valoracion_api.stock_detail, "GET"),
+    ("/api/stocks/{ticker}/monte-carlo", valoracion_api.run_monte_carlo, "POST"),
+    ("/api/stocks/{ticker}/econometrics", valoracion_api.econometric_audit, "GET"),
+    ("/api/stocks/{ticker}/export-csv", valoracion_api.export_estimation_csv, "GET"),
+    ("/api/stocks/{ticker}/refresh", valoracion_api.refresh_stock, "POST"),
+):
+    app.add_api_route(_path, _handler, methods=[_method])
 
 
 # ==================== 3. FAMA-FRENCH API ====================
@@ -442,7 +358,7 @@ def fama_analyze_sector(payload: Dict[str, Any] = Body(...)):
         sector_id = payload.get("sector_id", "technology")
         model = payload.get("model_type", "FF5")
         period = payload.get("period", "2y")
-        return fama_ctrl.analyze_sector(sector_id, model, period)
+        return fama_ctrl.analyze_sector(sector_id, model, period, bool(payload.get("force_refresh", False)))
     except Exception as e:
         return {"error": str(e)}
 

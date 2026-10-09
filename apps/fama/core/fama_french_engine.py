@@ -50,10 +50,11 @@ class FamaFrenchEngine:
             self.config = FACTOR_CONFIGS[model_type]
             self.factors = self.config["factors"]
 
-    def estimate(self, aligned_df: pd.DataFrame, cov_type: str = "HAC") -> Dict[str, Any]:
+    def estimate(self, aligned_df: pd.DataFrame, cov_type: str = "HAC", diagnostics: bool = True) -> Dict[str, Any]:
         """
         Runs the multi-factor estimation for the stock using aligned data.
         Returns econometric diagnostics, factor betas, expected returns, and cost of equity.
+        Pass diagnostics=False to skip the test battery when only betas/alpha/k_e are needed.
         """
         if aligned_df.empty or len(aligned_df) < 30:
             raise ValueError("Muestra insuficiente para estimación econométrica (mínimo 30 observaciones).")
@@ -69,7 +70,7 @@ class FamaFrenchEngine:
         # Run OLS with HAC Newey-West standard errors
         hac_lags = min(10, max(3, int(np.floor(4 * (len(aligned_df) / 100) ** (2 / 9)))))
         regression_output = EconometricDiagnostics.run_ols_with_diagnostics(
-            y, X, cov_type=cov_type, hac_maxlags=hac_lags
+            y, X, cov_type=cov_type, hac_maxlags=hac_lags, diagnostics=diagnostics
         )
 
         # Calculate annualized factor statistics and risk premia
