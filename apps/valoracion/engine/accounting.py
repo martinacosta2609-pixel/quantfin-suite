@@ -21,14 +21,20 @@ def calculate_invested_capital(
     """
     Invested Capital = Total Debt + Total Shareholders' Equity - Cash and Cash Equivalents
     Reflects the net operating capital supplied by both debt and equity holders.
+
+    The value is returned as is and can be zero or negative (cash-rich companies, or negative
+    equity after buybacks). It must NOT be floored: a placeholder such as 1 turns ROIC into
+    NOPAT / 1 and yields absurd figures (hundreds of thousands of percent).
     """
-    invested_cap = total_debt + total_equity - cash_and_equivalents
-    return float(max(invested_cap, 1.0))
+    return float(total_debt + total_equity - cash_and_equivalents)
 
 def calculate_real_roic(nopat: float, invested_capital: float) -> Optional[float]:
     """
     ROIC Real = NOPAT / Invested Capital
     Strict measure of core business operating profitability.
+
+    Returns None ("not meaningful") when invested capital is <= 0: the ratio has no economic
+    interpretation there (a negative denominator flips the sign, a near-zero one explodes).
     """
     if invested_capital <= 0:
         return None

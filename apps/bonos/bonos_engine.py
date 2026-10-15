@@ -275,13 +275,16 @@ class BondEngine:
             "cashflows": cfs
         }
 
+    # Shown to the user whenever a metric cannot be computed because the public data is incomplete
+    INFO_GAP = "No hay información suficiente desde la API pública de BYMA"
+
     NO_TIR_REASON = {
-        "on": "ON: BYMA no publica cupón ni amortizaciones y no hay cronograma cargado",
-        "subsoberano": "Título provincial/municipal sin cronograma de prospecto cargado",
-        "cer": "Título CER sin CER base ni cronograma de prospecto cargado",
-        "bono_otro": "Título público sin cronograma de prospecto cargado",
-        "soberano_usd": "Título en USD sin cronograma de prospecto cargado",
-        "bopreal": "Bopreal sin cronograma de prospecto cargado",
+        "on": f"{INFO_GAP}: no publica cupón ni amortizaciones de esta ON",
+        "subsoberano": f"{INFO_GAP}: falta el cronograma de pagos de este título provincial/municipal",
+        "cer": f"{INFO_GAP}: falta el CER base o el cronograma de pagos",
+        "bono_otro": f"{INFO_GAP}: falta el cronograma de pagos de este título",
+        "soberano_usd": f"{INFO_GAP}: falta el cronograma de pagos de este título",
+        "bopreal": f"{INFO_GAP}: falta el cronograma de pagos de este Bopreal",
     }
 
     def calculate_generic_metrics(self, symbol: str, price: float, ccy: str, maturity_str: str, days_to_mat: int,
@@ -298,21 +301,24 @@ class BondEngine:
         days = int(round(years_to_mat * 365.0))
 
         tir, tea, reason = None, None, ""
+        data_gap = True   # False only when the yield is missing for a reason other than missing data
         if family != "letra":
-            reason = self.NO_TIR_REASON.get(family, "Sin cronograma de flujos cargado")
+            reason = self.NO_TIR_REASON.get(family, f"{self.INFO_GAP}: falta el cronograma de pagos")
         elif days < 7:
             reason = "Vence en menos de 1 semana"
+            data_gap = False
         elif price >= 100.0:
-            reason = "Precio ≥ 100: letra capitalizable, CER o dólar linked. Requiere valor de rescate del prospecto"
+            reason = f"{self.INFO_GAP}: falta el valor de rescate (letra capitalizable, CER o dólar linked)"
         elif price < 50.0:
-            reason = "Precio fuera de escala de letra a descuento (no rescata a 100)"
+            reason = f"{self.INFO_GAP}: el precio no corresponde a una letra a descuento y falta su valor de rescate"
         else:
             tea_est = ((100.0 / price) ** (1.0 / years_to_mat) - 1.0) * 100.0
             if 0.0 <= tea_est <= self.GENERIC_TEA_MAX:
                 tea = tea_est
                 tir = ((1.0 + tea / 100.0) ** 0.5 - 1.0) * 200.0
+                data_gap = False
             else:
-                reason = f"Supuesto 'rescata a 100' no creíble (daría TEA {tea_est:.0f}%)"
+                reason = f"{self.INFO_GAP}: falta el valor de rescate (suponer 100 daría una TEA de {tea_est:.0f}%)"
 
         return {
             "name": symbol,
@@ -328,6 +334,7 @@ class BondEngine:
             "tir_quality": "estimada" if tir is not None else "no_disponible",
             "tir_reason": "Estimada: supone letra a descuento que rescata 100 al vencimiento" if tir is not None else reason,
             "tir_basis": "NOMINAL · Act/365 (estimada)" if tir is not None else "",
+            "data_gap": data_gap,
             "is_cer": False,
             "has_schedule": False,
             "macaulay_duration": round(years_to_mat, 2) if tir is not None else 0.0,

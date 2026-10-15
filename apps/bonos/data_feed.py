@@ -9,7 +9,7 @@ What the sources actually send (audited 2026-10-08, see `qa` block in the payloa
              (daily change as a DECIMAL). It never sends TIR, coupon, VT or the payment currency.
   * BYMA cauciones -> `trade` is the rate as a DECIMAL TNA (0.223 = 22.3% TNA), not a price.
   * BCRA  -> `ultValorInformado` already in PERCENT for rates/inflation; CER/UVA as index levels.
-Every yield published by this module is therefore computed by bonos_engine.py, always in PERCENT.
+Every yield published by this module is therefore computed by engine.py, always in PERCENT.
 """
 import json
 import os
@@ -24,7 +24,10 @@ from datetime import date, datetime, timedelta
 import requests
 import urllib3
 
-from bonos_engine import BondEngine
+try:
+    from bonos_engine import BondEngine
+except ImportError:
+    from engine import BondEngine
 from bond_db import SOVEREIGN_BONDS, get_bond_definition
 
 urllib3.disable_warnings()
@@ -483,6 +486,8 @@ class MarketDataFeed:
             "tir_quality": calc.get("tir_quality", "no_disponible"),
             "tir_reason": calc.get("tir_reason", ""),
             "tir_basis": calc.get("tir_basis", ""),
+            # True when VT / paridad / TIR / duration are missing because the public source lacks the data
+            "data_gap": bool(calc.get("data_gap")),
             "is_cer": bool(calc.get("is_cer")),
             "duration": calc.get("macaulay_duration", 0.0),
             "mod_duration": calc.get("modified_duration", 0.0),

@@ -179,6 +179,21 @@ def init_db():
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_stocks_sector_cap ON stocks(sector, market_cap DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_stocks_cap ON stocks(market_cap DESC)")
+
+        # Data migrations, tracked in PRAGMA user_version so each one runs exactly once.
+        version = cursor.execute("PRAGMA user_version").fetchone()[0]
+        if version < 2:
+            # v2: invested capital used to be floored at 1, producing ROIC of 100,000%+ for companies
+            # with zero/negative capital. Store the real value and leave ROIC NULL ("n.s.") when <= 0.
+            cursor.execute("""
+                UPDATE stocks
+                SET invested_capital = total_debt + total_equity - cash_and_equivalents,
+                    roic = CASE WHEN total_debt + total_equity - cash_and_equivalents > 0
+                                THEN nopat / (total_debt + total_equity - cash_and_equivalents) END
+                WHERE total_debt IS NOT NULL AND total_equity IS NOT NULL
+                  AND cash_and_equivalents IS NOT NULL AND nopat IS NOT NULL
+            """)
+            cursor.execute("PRAGMA user_version = 2")
         conn.commit()
     invalidate_cache()
 

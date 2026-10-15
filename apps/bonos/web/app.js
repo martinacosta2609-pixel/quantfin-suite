@@ -413,6 +413,9 @@ function getFilteredData() {
   });
 }
 
+// Same wording as engine.INFO_GAP: shown when the public source lacks the data to compute the metrics
+const INFO_GAP_MSG = 'No hay información suficiente desde la API pública de BYMA';
+
 const FAMILY_BADGE = { bopreal: 'badge-bopreal', cer: 'badge-cer', letra: 'badge-lecap', on: 'badge-corp', caucion: 'badge-lecap' };
 const SORT_KEY = { tir: 'tir_tea' };   // the TIR column shows and sorts by TEA
 
@@ -511,11 +514,15 @@ function renderView() {
       <td class="right ${changeClass}" style="font-weight:700;">
         ${hasNum(bond.change_pct) ? `${changeSign}${bond.change_pct.toFixed(2)}%` : '-'}
       </td>
+      ${bond.data_gap ? `
+      <td colspan="5" class="center" style="font-size:11px; color:var(--text-dim);" title="${bond.tir_reason || ''}">
+        ${INFO_GAP_MSG}
+      </td>` : `
       <td class="right">${hasNum(bond.vt) && bond.vt > 0 ? `${paySym} ${bond.vt.toFixed(2)}` : '-'}</td>
       <td class="center">${parityBadge}</td>
       <td class="right" style="color:var(--primary-cyan); font-weight:700;">${tirCellHtml(bond)}</td>
       <td class="right">${isCaucion ? `${bond.days_to_maturity} d` : ((bond.duration > 0) ? `${bond.duration.toFixed(2)} a` : '-')}</td>
-      <td class="right">${(bond.mod_duration > 0) ? `${bond.mod_duration.toFixed(2)} a` : '-'}</td>
+      <td class="right">${(bond.mod_duration > 0) ? `${bond.mod_duration.toFixed(2)} a` : '-'}</td>`}
       <td class="right" style="color:var(--text-muted); font-size:11px;">
         ${bond.volume_amount ? `$ ${(bond.volume_amount / 1e6).toFixed(1)}M` : '-'}
       </td>
@@ -1634,7 +1641,7 @@ function updateModalVAN() {
 
   const res = calculateVANMath(currentSelectedBond, inv, k);
   if (!res) {
-    amtEl.innerText = 'No disponible: sin cronograma de flujos';
+    amtEl.innerText = currentSelectedBond.data_gap ? INFO_GAP_MSG : 'No disponible: sin cronograma de flujos';
     amtEl.style.color = 'var(--text-dim)';
     badgeEl.style.backgroundColor = 'transparent';
     badgeEl.style.borderColor = 'var(--border-subtle)';
