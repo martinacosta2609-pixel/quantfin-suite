@@ -25,12 +25,30 @@
       font-size: 12px;
       z-index: 999999;
       color: #94a3b8;
+      box-sizing: border-box;
+      gap: 8px;
     `;
 
+    // Inject mobile scrollbar helper
+    if (!document.getElementById('quantfin-global-bar-style')) {
+      const styleTag = document.createElement('style');
+      styleTag.id = 'quantfin-global-bar-style';
+      styleTag.textContent = `
+        #quantfin-global-bar .quantfin-nav-scroll::-webkit-scrollbar { display: none; }
+        @media (max-width: 640px) {
+          #quantfin-global-bar {
+            padding: 0 8px !important;
+            gap: 6px !important;
+          }
+        }
+      `;
+      document.head.appendChild(styleTag);
+    }
+
     const left = document.createElement('div');
-    left.style.cssText = 'display: flex; align-items: center; gap: 12px;';
+    left.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-shrink: 0;';
     left.innerHTML = `
-      <a href="/?v=${Date.now()}" style="text-decoration: none; color: #38bdf8; font-weight: 800; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+      <a href="/?v=${Date.now()}" style="text-decoration: none; color: #38bdf8; font-weight: 800; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></span>
         ECONOMATO
       </a>
@@ -45,7 +63,8 @@
     ];
 
     const right = document.createElement('div');
-    right.style.cssText = 'display: flex; align-items: center; gap: 4px;';
+    right.className = 'quantfin-nav-scroll';
+    right.style.cssText = 'display: flex; align-items: center; gap: 4px; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; min-width: 0; flex-shrink: 1;';
 
     links.forEach(item => {
       const a = document.createElement('a');
@@ -83,6 +102,7 @@
 
     document.body.prepend(nav);
     document.body.style.paddingTop = '38px';
+    document.documentElement.style.setProperty('--suite-nav-height', '38px');
   }
 
   if (document.readyState === 'loading') {

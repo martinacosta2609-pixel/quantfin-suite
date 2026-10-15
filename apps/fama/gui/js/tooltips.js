@@ -103,8 +103,23 @@ const Tooltips = (() => {
       if (next !== el) hide();
     });
 
+    // Touch screens have no hover: a tap shows the help for a few seconds
+    let touchTimer = null;
+    document.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'touch') return;
+      const el = target(e.target);
+      clearTimeout(touchTimer);
+      if (!el) { hide(); return; }
+      hide();
+      show(el, e.clientX, e.clientY);
+      touchTimer = setTimeout(hide, 8000);
+    });
+
     // Un clic (p. ej. abrir un <select>), una tecla Escape o un scroll cierran el tooltip.
-    document.addEventListener('mousedown', hide, true);
+    document.addEventListener('mousedown', e => {
+      if (e.pointerType === 'touch') return;
+      hide();
+    }, true);
     document.addEventListener('scroll', hide, true);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
 

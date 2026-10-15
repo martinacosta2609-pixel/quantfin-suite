@@ -467,7 +467,8 @@ const TipEngine = (() => {
         let live = null;
         try { live = g.live ? g.live(ctx) : null; } catch (e) { live = null; }
 
-        let html = `<div class="tip-head"><span class="tip-title">${g.title}</span>${g.tag ? `<span class="tip-tag">${g.tag}</span>` : ''}</div>`;
+        let html = `<button type="button" class="tip-close-btn" aria-label="Cerrar">✕</button>`;
+        html += `<div class="tip-head"><span class="tip-title">${g.title}</span>${g.tag ? `<span class="tip-tag">${g.tag}</span>` : ''}</div>`;
         html += `<p class="tip-what">${g.what}</p>`;
         if (g.formula) html += `<div class="tip-formula">${g.formula}</div>`;
         if (g.how) html += `<p class="tip-how"><b>Cómo usarlo:</b> ${g.how}</p>`;
@@ -527,7 +528,15 @@ const TipEngine = (() => {
             if (!el.hasAttribute('tabindex') && !/^(BUTTON|INPUT|SELECT|A)$/.test(el.tagName)) el.tabIndex = 0;
         });
 
+        // Click en boton cerrar dentro del tooltip
+        box.addEventListener('click', e => {
+            if (e.target.closest('.tip-close-btn')) {
+                hide();
+            }
+        });
+
         document.addEventListener('mouseover', e => {
+            if (window.innerWidth <= 768) return; // Evitar hover espurio en moviles
             const el = e.target.closest ? e.target.closest('[data-tip]') : null;
             if (el === current) return;
             clearTimeout(showTimer);
@@ -538,15 +547,30 @@ const TipEngine = (() => {
         document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) show(el); });
         document.addEventListener('focusout', hide);
         document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
-        window.addEventListener('scroll', hide, true);
+        window.addEventListener('scroll', () => {
+            if (window.innerWidth > 768) hide();
+        }, true);
         window.addEventListener('resize', hide);
 
-        // En pantallas tactiles no hay hover: un toque abre/cierra la ficha
-        document.addEventListener('click', e => {
-            if (!window.matchMedia('(hover: none)').matches) return;
+        // Soporte tactil integral para moviles y tablets
+        let touchDismissTimer = null;
+        document.addEventListener('pointerdown', e => {
+            const isTouch = e.pointerType === 'touch' || window.innerWidth <= 768;
+            if (!isTouch) return;
             const el = e.target.closest ? e.target.closest('[data-tip]') : null;
-            if (!el || el === current) { hide(); return; }
-            show(el);
+            const insideBox = e.target.closest && e.target.closest('#tipBox');
+            if (insideBox) return; // Si toca dentro de la ficha de tooltip, no cerrar
+            if (el) {
+                if (el === current) {
+                    hide();
+                } else {
+                    show(el);
+                    clearTimeout(touchDismissTimer);
+                    touchDismissTimer = setTimeout(hide, 10000);
+                }
+            } else if (current) {
+                hide();
+            }
         });
     }
 

@@ -51,7 +51,7 @@ body {
     justify-content: space-between;
     gap: 1.5rem;
     position: sticky;
-    top: 0;
+    top: var(--suite-nav-height, 0);
     z-index: 50;
 }
 
@@ -554,6 +554,41 @@ body {
     text-align: left;
 }
 
+/* STICKY COLUMNS FOR OPTIONS CHAIN TABLE */
+.options-chain-table th:first-child,
+.options-chain-table td:first-child:not([colspan]) {
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    background-color: var(--bg-surface-elevated);
+    min-width: 62px;
+    width: 62px;
+}
+
+.options-chain-table td:first-child:not([colspan]) {
+    background-color: var(--bg-surface);
+}
+
+.options-chain-table th:nth-child(2),
+.options-chain-table td:nth-child(2) {
+    position: sticky;
+    left: 62px;
+    z-index: 5;
+    background-color: var(--bg-surface-elevated);
+    min-width: 78px;
+    width: 78px;
+    box-shadow: 3px 0 6px -2px rgba(0, 0, 0, 0.6);
+}
+
+.options-chain-table td:nth-child(2) {
+    background-color: var(--bg-surface);
+}
+
+.options-chain-table tr:hover td:first-child:not([colspan]),
+.options-chain-table tr:hover td:nth-child(2) {
+    background-color: #1A2234 !important;
+}
+
 .badge-call {
     color: var(--accent-emerald);
     background: rgba(16, 185, 129, 0.12);
@@ -734,6 +769,53 @@ body {
 .rounded { border-radius: 0.25rem; }
 .rounded-lg { border-radius: 0.5rem; }
 .rounded-xl { border-radius: 0.75rem; }
+
+/* GRID & LAYOUT UTILITIES */
+.grid { display: grid; }
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.gap-1 { gap: 0.25rem; }
+
+.space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem; }
+.space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.5rem; }
+.space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
+.space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.5rem; }
+
+.bg-slate-900\/80 { background-color: rgba(15, 23, 42, 0.8); }
+.bg-slate-900\/60 { background-color: rgba(15, 23, 42, 0.6); }
+.bg-slate-950\/60 { background-color: rgba(2, 6, 23, 0.6); }
+.bg-slate-950\/40 { background-color: rgba(2, 6, 23, 0.4); }
+.bg-slate-950 { background-color: #020617; }
+.bg-cyan-950\/40 { background-color: rgba(8, 51, 68, 0.4); }
+.bg-purple-950\/40 { background-color: rgba(59, 7, 100, 0.4); }
+.bg-emerald-950\/30 { background-color: rgba(6, 78, 59, 0.3); }
+.bg-rose-950\/30 { background-color: rgba(136, 19, 55, 0.3); }
+
+.border-cyan-800\/40 { border-color: rgba(21, 94, 117, 0.4); }
+.border-purple-800\/40 { border-color: rgba(107, 33, 168, 0.4); }
+.border-emerald-800\/40 { border-color: rgba(6, 95, 70, 0.4); }
+.border-rose-800\/40 { border-color: rgba(159, 18, 57, 0.4); }
+
+.border-t-4 { border-top-width: 4px; border-top-style: solid; }
+.border-l-4 { border-left-width: 4px; border-left-style: solid; }
+.border-emerald-500 { border-color: #10B981; }
+.border-rose-500 { border-color: #F43F5E; }
+.border-cyan-500 { border-color: #06B6D4; }
+.border-purple-500 { border-color: #8B5CF6; }
+
+@media (min-width: 768px) {
+    .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .md\:col-span-1 { grid-column: span 1 / span 1; }
+    .md\:col-span-2 { grid-column: span 2 / span 2; }
+}
+
+@media (min-width: 1024px) {
+    .lg\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* COLORES SEMANTICOS */
 .text-emerald-400 { color: #10B981; }
@@ -917,9 +999,260 @@ body.tips-off .help-hint { display: none; }
 .gloss-item b { color: #E2E8F0; }
 .gloss-item .tip-formula { margin-top: 0.25rem; }
 
+/* ============================================================
+   RESPONSIVE DESIGN (MOBILE & TABLET ADAPTATION)
+   ============================================================ */
+
 @media (max-width: 1100px) {
     .app-header { flex-wrap: wrap; }
     .header-right { flex-wrap: wrap; }
+}
+
+@media (max-width: 768px) {
+    /* Header adaptativo */
+    .app-header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0.5rem 0.75rem;
+        gap: 0.5rem;
+    }
+    
+    .header-left {
+        justify-content: flex-start;
+        gap: 0.6rem;
+    }
+    
+    .logo-badge {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .logo-symbol {
+        font-size: 1.1rem;
+    }
+    
+    .app-title {
+        font-size: 0.95rem;
+    }
+    
+    .app-subtitle {
+        display: none;
+    }
+    
+    .header-center {
+        display: none;
+    }
+    
+    .header-right {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: none;
+    }
+    
+    .header-right::-webkit-scrollbar {
+        display: none;
+    }
+    
+    .nav-tabs {
+        flex: 1;
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        padding: 0.2rem;
+    }
+    
+    .nav-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    
+    .nav-tab {
+        padding: 0.35rem 0.65rem;
+        font-size: 0.74rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    
+    .tips-toggle {
+        padding: 0.35rem 0.55rem;
+        font-size: 0.7rem;
+        flex-shrink: 0;
+    }
+
+    /* Cinta rapida de commodities */
+    .commodity-strip {
+        padding: 0.35rem 0.6rem;
+        gap: 0.4rem;
+        scrollbar-width: none;
+    }
+    
+    .commodity-strip::-webkit-scrollbar {
+        display: none;
+    }
+    
+    .commodity-pill-btn {
+        padding: 0.3rem 0.6rem;
+        font-size: 0.72rem;
+    }
+
+    /* Contenedor y Paneles */
+    .main-container {
+        padding: 0.6rem 0.5rem;
+    }
+
+    .grid-layout-live {
+        grid-template-columns: 1fr;
+        gap: 0.85rem;
+    }
+
+    .valuation-controls-bar {
+        grid-template-columns: 1fr;
+        gap: 0.6rem;
+        padding: 0.6rem;
+    }
+
+    .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .card-header .text-right {
+        text-align: left;
+    }
+
+    /* Cadena de Opciones */
+    .card .flex.justify-between.items-center.mb-3 {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.6rem;
+    }
+
+    /* Banner auditoria paridad */
+    .mt-3.p-3.bg-slate-900\/60.border.border-slate-800 {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.4rem;
+    }
+
+    /* Tab 2: Validador econometrico */
+    .econometric-controls-grid {
+        grid-template-columns: 1fr;
+        gap: 0.6rem;
+    }
+
+    .diagnostics-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+    }
+
+    #btnRunEconTest {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Tab 3: Calculadora What-If */
+    #tab-calculator .grid.grid-cols-2.gap-4 {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    /* Tab 4: Buscador de glosario */
+    .glossary-search {
+        max-width: 100%;
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .main-container {
+        padding: 0.4rem 0.35rem;
+    }
+
+    .card {
+        padding: 0.75rem !important;
+    }
+
+    .quote-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 0.4rem;
+    }
+
+    .vol-estimators-grid {
+        grid-template-columns: 1fr;
+        gap: 0.4rem;
+    }
+
+    .diagnostics-metrics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Griegas en tarjetas Call y Put en movil */
+    [data-side] .grid-cols-5 {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 0.35rem !important;
+    }
+
+    .chart-container-md {
+        height: 200px;
+    }
+}
+
+/* Modal interactivo para tooltips en movil */
+@media (max-width: 640px) {
+    .tip-box {
+        pointer-events: auto !important;
+        position: fixed !important;
+        left: 10px !important;
+        right: 10px !important;
+        bottom: 12px !important;
+        top: auto !important;
+        width: auto !important;
+        max-width: calc(100vw - 20px) !important;
+        max-height: 80vh !important;
+        overflow-y: auto !important;
+        border-radius: 12px !important;
+        padding: 1rem !important;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(6, 182, 212, 0.3) !important;
+        transform: translateY(12px) !important;
+        z-index: 9999 !important;
+    }
+    
+    .tip-box.visible {
+        transform: translateY(0) !important;
+    }
+
+    .tip-close-btn {
+        display: inline-flex !important;
+    }
+}
+
+.tip-close-btn {
+    display: none;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-medium);
+    color: #94A3B8;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tip-close-btn:hover {
+    color: #FFFFFF;
+    background: rgba(255, 255, 255, 0.16);
 }
 
 @media (prefers-reduced-motion: reduce) {

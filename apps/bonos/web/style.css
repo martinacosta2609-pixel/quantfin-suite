@@ -413,6 +413,69 @@ body {
   background-color: rgba(56, 189, 248, 0.12);
 }
 
+/* Sticky First Column for Financial Tables */
+#bondsTable th:first-child,
+#bondsTable td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background-color: var(--bg-surface);
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.45);
+}
+
+#bondsTable thead th:first-child {
+  z-index: 25;
+  background-color: #161b26;
+}
+
+#bondsTable tbody tr:hover td:first-child {
+  background-color: var(--bg-card);
+}
+
+#bondsTable tbody tr.row-selected td:first-child {
+  background-color: #11232f;
+}
+
+.compact-table th:first-child,
+.compact-table td:first-child,
+.cashflows-table th:first-child,
+.cashflows-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background-color: var(--bg-card);
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.45);
+}
+
+.compact-table thead th:first-child,
+.cashflows-table thead th:first-child {
+  z-index: 25;
+  background-color: #161b26;
+}
+
+.compact-table tbody tr:hover td:first-child,
+.cashflows-table tbody tr:hover td:first-child {
+  background-color: var(--bg-card-hover);
+}
+
+.horizon-results-grid table th:first-child,
+.horizon-results-grid table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background-color: var(--bg-card);
+  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.4);
+}
+
+.horizon-results-grid table thead th:first-child {
+  z-index: 25;
+  background-color: #161b26;
+}
+
+.horizon-results-grid table tbody tr:hover td:first-child {
+  background-color: var(--bg-card-hover);
+}
+
 /* Table Specific Badges */
 .ticker-cell {
   display: flex;
@@ -1300,3 +1363,340 @@ th.sortable[data-info] { cursor: pointer; }
 .info-tip-title { font-size: 13px; font-weight: 700; color: var(--primary-cyan); margin-bottom: 6px; }
 .info-tip-text { color: var(--text-muted); margin-top: 4px; }
 .info-tip-text strong { color: var(--text-main); font-weight: 600; }
+
+/* ========================================================
+   RESPONSIVE & MOBILE ADAPTATIONS (<= 768px and <= 480px)
+   Preserves full desktop experience intact on wider screens.
+   ======================================================== */
+
+/* Inertial touch scrolling for mobile */
+.table-container,
+.van-container,
+.horizon-container,
+.charts-grid,
+.scenarios-container,
+.modal-body,
+.cashflows-table-wrap {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  body {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .app-container {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* 1. Header */
+  .app-header {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px;
+    min-height: auto;
+  }
+
+  .header-brand {
+    flex: 1;
+    min-width: 180px;
+    gap: 8px;
+  }
+
+  .brand-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+
+  .brand-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .brand-title {
+    font-size: 13.5px;
+  }
+
+  .brand-subtitle {
+    font-size: 9px;
+    gap: 4px;
+  }
+
+  .header-controls {
+    flex-shrink: 0;
+  }
+
+  .header-controls .btn {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  .macro-hud {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    padding: 6px 8px;
+    gap: 6px;
+    scrollbar-width: none;
+    border-radius: 8px;
+  }
+
+  .macro-hud::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hud-item {
+    flex: 0 0 auto;
+    padding: 0 8px;
+  }
+
+  .hud-label {
+    font-size: 8.5px;
+  }
+
+  .hud-value {
+    font-size: 11.5px;
+  }
+
+  /* 2. Toolbar */
+  .app-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px 12px;
+    gap: 8px;
+    min-height: auto;
+  }
+
+  .search-box {
+    width: 100%;
+    padding: 6px 10px;
+  }
+
+  .category-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    padding-bottom: 3px;
+    scrollbar-width: none;
+  }
+
+  .category-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cat-tab {
+    flex: 0 0 auto;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  .view-switcher {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    padding: 3px;
+    scrollbar-width: none;
+  }
+
+  .view-switcher::-webkit-scrollbar {
+    display: none;
+  }
+
+  .view-btn {
+    flex: 0 0 auto;
+    font-size: 11px;
+    padding: 5px 9px;
+  }
+
+  /* 3. Tables & Actions */
+  .btn-inspect {
+    padding: 5px 8px;
+    font-size: 11px;
+    min-height: 28px;
+  }
+
+  /* 4. VAN View */
+  .van-container, .horizon-container {
+    padding: 10px 12px;
+    gap: 12px;
+  }
+
+  .terminal-card {
+    padding: 12px 14px;
+    border-radius: 10px;
+  }
+
+  .van-controls-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .van-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .van-grid-split {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .compact-wrap {
+    max-height: 320px;
+  }
+
+  /* 5. Horizon View */
+  .horizon-winner-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .winner-trophy {
+    font-size: 32px;
+  }
+
+  .winner-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+
+  .horizon-results-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .horizon-slider-box {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .horizon-slider-box label {
+    min-width: auto;
+  }
+
+  /* 6. Scenarios View */
+  .scenarios-container {
+    padding: 10px !important;
+    gap: 14px !important;
+  }
+
+  .scenario-inputs-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+
+  .scenario-results-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .scenario-sub-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* 7. Charts View */
+  .charts-grid {
+    grid-template-columns: 1fr;
+    padding: 10px 12px;
+    gap: 12px;
+  }
+
+  .chart-wrapper {
+    min-height: 280px;
+  }
+
+  /* 8. Desktop Modal (responsive) */
+  .desktop-modal {
+    width: 95%;
+    max-height: 92vh;
+    border-radius: 12px;
+  }
+
+  .modal-header {
+    padding: 12px 14px;
+  }
+
+  .modal-title-row {
+    gap: 8px;
+  }
+
+  .modal-ticker {
+    font-size: 17px;
+  }
+
+  .modal-body {
+    padding: 12px 14px;
+    gap: 12px;
+  }
+
+  .modal-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .modal-van-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .sim-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .sim-results {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  /* 9. Footer */
+  .app-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 6px 12px;
+    gap: 4px;
+    min-height: auto;
+  }
+
+  .footer-left {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .footer-right {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .van-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .winner-stats-row {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-sub-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
