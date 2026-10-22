@@ -215,7 +215,7 @@ _VENDOR_LIBS = ("chart.min.js", "chart.umd.min.js")
 async def add_cache_control_headers(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path in ["/", "/index.html"] or path.endswith(".html") or "/shared" in path:
+    if path in ["/", "/index.html", "/juegos", "/juegos/", "/apps", "/apps/", "/valoracion", "/valoracion/", "/bonos", "/bonos/", "/fama", "/fama/", "/bsm", "/bsm/"] or path.endswith(".html") or "/shared" in path:
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"

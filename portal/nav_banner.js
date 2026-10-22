@@ -59,7 +59,8 @@
       { name: '💵 Bonos', path: '/bonos/' },
       { name: '📈 Valoración', path: '/valoracion/' },
       { name: '📊 Fama-French', path: '/fama/' },
-      { name: '🎯 Black-Scholes', path: '/bsm/' }
+      { name: '🎯 Black-Scholes', path: '/bsm/' },
+      { name: '♟️ Teoría de Juegos', path: '/juegos/' }
     ];
 
     const right = document.createElement('div');
@@ -71,7 +72,7 @@
       a.href = item.path === '/' ? '/?v=' + Date.now() : item.path;
       a.textContent = item.name;
       const isActive = (item.path === '/' && (currentPath === '/' || currentPath === '')) ||
-                       (item.path !== '/' && currentPath.startsWith(item.path.replace(/\/$/, '')));
+                       (item.path !== '/' && (currentPath.startsWith(item.path.replace(/\/$/, '')) || (item.path === '/juegos/' && currentPath.startsWith('/apps'))));
       a.style.cssText = `
         text-decoration: none;
         padding: 4px 10px;
