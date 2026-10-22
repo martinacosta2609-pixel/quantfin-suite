@@ -1,0 +1,6 @@
+@echo off
+title GameTheory Studio - Iniciando App de Escritorio...
+cd /d "%~dp0"
+echo Iniciando GameTheory Studio (Modo Escritorio)...
+call npm.cmd run desktop
+pause
