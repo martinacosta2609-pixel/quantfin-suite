@@ -32,8 +32,8 @@ def run_monte_carlo_simulation(
     tax_rate: float = 0.21,
     reinvestment_rate_mean: float = 0.35,
     reinvestment_rate_std: float = 0.10,
-    exit_multiple_mean: float = 18.0,
-    exit_multiple_std: float = 4.0,
+    exit_multiple_mean: Optional[float] = None,
+    exit_multiple_std: Optional[float] = None,
     num_simulations: int = 5000,
     random_seed: Optional[int] = 42
 ) -> Dict[str, Any]:
@@ -57,6 +57,18 @@ def run_monte_carlo_simulation(
     current_revenue_ps = max(0.5, float(current_revenue_ps))
     num_simulations = max(1000, min(int(num_simulations), 10000))
     shape = (num_simulations, 5)
+    effective_tax = max(0.0, min(tax_rate, 0.35))
+
+    # Calibrate Year-5 terminal exit multiple via partial mean-reversion between
+    # the asset's current implied FCF multiple and its fundamental growth-adjusted multiple.
+    if exit_multiple_mean is None:
+        nopat_0 = current_revenue_ps * max(0.02, float(historical_margin_mean)) * (1.0 - effective_tax)
+        fcf_0 = nopat_0 * (1.0 - float(np.clip(reinvestment_rate_mean, 0.05, 0.85)))
+        implied_mult = p0 / max(fcf_0, p0 * 0.015)
+        fundamental_mult = 18.0 + 45.0 * max(0.0, float(historical_growth_mean))
+        exit_multiple_mean = float(np.clip(0.60 * implied_mult + 0.40 * fundamental_mult, 12.0, 48.0))
+    if exit_multiple_std is None:
+        exit_multiple_std = float(max(3.0, exit_multiple_mean * 0.18))
 
     # Stochastic shocks, bounded to avoid astronomical extremes
     growth_shocks = np.clip(
@@ -66,12 +78,11 @@ def run_monte_carlo_simulation(
     reinvest_shocks = np.clip(
         rng.normal(reinvestment_rate_mean, max(0.01, reinvestment_rate_std), shape), 0.05, 0.85)
     exit_multiples = np.clip(
-        rng.normal(exit_multiple_mean, max(1.0, exit_multiple_std), num_simulations), 6.0, 35.0)
+        rng.normal(exit_multiple_mean, max(1.0, exit_multiple_std), num_simulations), 6.0, 65.0)
 
     # Simulate 5-year paths for Free Cash Flows per share (vectorized over paths)
     fcf_paths = np.empty(shape)
     rev_prev = np.full(num_simulations, current_revenue_ps)
-    effective_tax = max(0.0, min(tax_rate, 0.35))
 
     for t in range(5):
         rev_t = rev_prev * (1.0 + growth_shocks[:, t])

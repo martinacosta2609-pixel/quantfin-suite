@@ -178,6 +178,11 @@ async def lifespan(app: FastAPI):
         print("[AVISO] Error al inicializar DB:", e)
     # statsmodels tarda ~1.5 s en importar y solo lo usa la pestaña de auditoria
     threading.Thread(target=valoracion_api._warm_up_econometrics, daemon=True).start()
+    try:
+        from engine.market_data import start_background_market_sync
+        start_background_market_sync(interval_seconds=60.0)
+    except Exception as e:
+        print("[AVISO] Error al iniciar market sync de Valoracion:", e)
 
     # Initial Bonos load in background thread
     t = threading.Thread(target=update_bonos_worker, daemon=True)
@@ -306,8 +311,10 @@ def calculate_bonos_horizon(years: float = 5.0):
 # Handlers definidos en apps/valoracion/engine/api.py; se registran aqui para servirlos desde este unico servidor.
 for _path, _handler, _method in (
     ("/api/health", valoracion_api.health_check, "GET"),
+    ("/api/market-overview", valoracion_api.market_overview, "GET"),
     ("/api/sectors", valoracion_api.list_sectors, "GET"),
     ("/api/sectors/{sector_name}", valoracion_api.sector_stocks, "GET"),
+    ("/api/sectors/{sector_name}/refresh", valoracion_api.refresh_sector, "POST"),
     ("/api/stocks/{ticker}", valoracion_api.stock_detail, "GET"),
     ("/api/stocks/{ticker}/monte-carlo", valoracion_api.run_monte_carlo, "POST"),
     ("/api/stocks/{ticker}/econometrics", valoracion_api.econometric_audit, "GET"),

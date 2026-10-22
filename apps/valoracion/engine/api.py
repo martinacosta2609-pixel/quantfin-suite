@@ -31,9 +31,16 @@ from engine.database import (
     has_missing_revenue_ps,
 )
 from engine.monte_carlo import run_monte_carlo_simulation, stable_seed, SimulationError
-from engine.market_data import fetch_and_update_stock
+from engine.market_data import (
+    fetch_and_update_stock,
+    get_market_overview,
+    mark_active_sector,
+    refresh_sector_stocks,
+    refresh_stock_history_live,
+    start_background_market_sync,
+)
 
-API_VERSION = "1.1.0"
+API_VERSION = "1.2.0"
 TICKER_PATTERN = r"^[A-Za-z0-9.\-^]{1,12}$"
 BASELINE_SIMULATIONS = 5000
 
@@ -56,6 +63,7 @@ async def lifespan(_: FastAPI):
     except Exception as exc:  # never block startup on a data migration
         print(f"[WARN] backfill revenue_ps: {exc}")
     threading.Thread(target=_warm_up_econometrics, daemon=True).start()
+    start_background_market_sync(interval_seconds=30.0)
     yield
 
 
@@ -139,6 +147,14 @@ def health_check():
     return {"status": "online", "version": API_VERSION, "engine": "Python/NumPy/SciPy/Statsmodels"}
 
 
+@app.get("/api/market-overview")
+def market_overview(force: bool = False):
+    """
+    Returns live market snapshot for S&P 500 (^GSPC), NASDAQ (^IXIC), US 10Y (^TNX), and VIX (^VIX).
+    """
+    return get_market_overview(force=force)
+
+
 @app.get("/api/sectors")
 def list_sectors(request: Request):
     """
@@ -152,10 +168,19 @@ def sector_stocks(request: Request, sector_name: str = Path(..., max_length=80))
     """
     Returns all stocks within the specified sector, along with the fixed Sector Median reference.
     """
+    mark_active_sector(sector_name)
     data = get_sector_data(sector_name)
     if not data["stocks"] and sector_name.lower() != "all":
         raise HTTPException(status_code=404, detail=f"Sector '{sector_name}' no encontrado.")
     return _cached_json(request, ("sector", sector_name.lower()), lambda: data)
+
+
+@app.post("/api/sectors/{sector_name}/refresh")
+def refresh_sector(sector_name: str = Path(..., max_length=80), force: bool = False):
+    """
+    Synchronizes live market prices from Yahoo Finance for all stocks in the specified sector.
+    """
+    return refresh_sector_stocks(sector_name, force=force)
 
 
 @app.get("/api/stocks/{ticker}")
@@ -220,11 +245,11 @@ def run_monte_carlo(ticker: str = TickerParam, params: Optional[MonteCarloReques
     return result
 
 
-@lru_cache(maxsize=256)
 def _audit_for(ticker: str) -> Dict[str, Any]:
-    """Econometric audit per ticker. The historical series is immutable at runtime, so it is memoised."""
+    """Econometric audit per ticker using the latest 5-year monthly series."""
     from engine.econometrics import run_econometric_audit  # lazy: see _warm_up_econometrics
 
+    refresh_stock_history_live(ticker)
     df = get_stock_history_df(ticker)
     if df.empty:
         raise LookupError(ticker)

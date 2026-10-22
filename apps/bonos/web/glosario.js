@@ -134,26 +134,26 @@ const GLOSARIO = {
     uso: 'Es el resultado de todo el plazo, sin anualizar. Para comparar plazos distintos usá la TIR al horizonte.'
   },
 
-  // ---------------- Escenarios macro ----------------
+  // ---------------- Comparación de Bonos ----------------
   rend_nominal: {
     titulo: 'Rendimiento nominal (en pesos)',
-    que: 'Ganancia anual medida en pesos corrientes, sin descontar inflación ni devaluación.',
-    uso: 'Es el número "de pizarra". No dice si ganaste poder de compra: para eso hay que mirar el rendimiento real.'
+    que: 'Ganancia efectiva anual medida en pesos corrientes, sin descontar la inflación.',
+    uso: 'En un bono en pesos es su TIR directa; en un bono en dólares es su TIR en USD compuesta con la devaluación esperada: (1 + TIR_USD) × (1 + devaluación) − 1.'
   },
   rend_real: {
-    titulo: 'Rendimiento real',
-    que: 'Ganancia anual por encima de la inflación, según la ecuación de Fisher:  real = (1 + nominal) / (1 + inflación) − 1.',
-    uso: 'Si es negativo, la inversión pierde poder de compra aunque gane pesos. Es negativo siempre que la tasa nominal quede por debajo de la inflación esperada.'
+    titulo: 'Rendimiento real (poder adquisitivo)',
+    que: 'Ganancia anual por encima de la inflación, según la ecuación de Fisher: real = (1 + nominal) / (1 + inflación) − 1.',
+    uso: 'Si es negativo, el bono en pesos pierde poder adquisitivo aunque pague intereses nominales. Un bono en pesos solo es recomendable si su tasa supera tanto a la inflación como a la devaluación.'
   },
   rend_usd: {
-    titulo: 'Rendimiento en dólares',
-    que: 'Ganancia anual medida en dólares:  en USD = (1 + nominal en pesos) / (1 + devaluación) − 1.',
-    uso: 'Es la medida común para comparar una inversión en pesos contra una en dólares. Los pesos ganan mientras el dólar suba menos que la "devaluación de empate" que informa el veredicto.'
+    titulo: 'Rendimiento en dólares (USD)',
+    que: 'Ganancia anual medida en dólares: para el bono en pesos es (1 + TIR_ARS) / (1 + devaluación) − 1; para el bono Hard Dollar es su TIR en dólares.',
+    uso: 'Mide el resultado cambiario. Sin embargo, para que el bono en pesos gane, debe superar al bono en dólares tanto frente a la devaluación como frente a la inflación.'
   },
   devaluacion: {
     titulo: 'Devaluación esperada',
-    que: 'Tu expectativa de suba anual del dólar MEP durante el plazo de la inversión.',
-    uso: 'Es el supuesto clave al comparar pesos contra dólares: cuanto más suba el dólar, menos vale en dólares lo ganado en pesos.'
+    que: 'Expectativa de suba anual del tipo de cambio dólar MEP durante el horizonte de comparación.',
+    uso: 'Cuanto más suba el dólar o la inflación en pesos, menor será el retorno real y en moneda dura de la alternativa en pesos.'
   },
 
   // ---------------- Indicadores macro ----------------

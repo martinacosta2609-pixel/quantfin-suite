@@ -15,10 +15,13 @@ let currentSelectedBond = null;
 let tableRowLimit = 300;
 let lastLoadError = null;
 
-// Charts
+// Charts & Yield Curve State (Unidad 4 · Renta Fija)
 let curveChart = null;
 let parityChart = null;
 let horizonChart = null;
+let curveFamily = 'usd';          // 'usd' = Soberanos USD | 'lecap' = Pesos Tasa Fija | 'cer' = Pesos CER
+let curveAxis = 'years';          // 'years' = Plazo al Vto (Años) | 'md' = Duration Modificada (Años)
+let curveTheoryOverlay = null;    // null | 'normal' | 'plana' | 'invertida' | 'joroba'
 
 // VAN Module State (k is remembered per currency: a USD hurdle rate is meaningless in pesos)
 let vanSelectedBond = null;
@@ -198,8 +201,11 @@ function initUIEvents() {
   // Horizon Module UI Events
   initHorizonEvents();
   
-  // Scenarios Events
+  // Comparación de Bonos Events
   initScenariosEvents();
+
+  // Curvas de Rendimiento Events
+  initChartsEvents();
 }
 
 // Switch View Panels
@@ -1374,8 +1380,339 @@ function renderHorizonChart(results) {
 }
 
 // ========================================================
-// 4. CHARTS VIEW (CURVAS & DISPERSIÓN)
+// 4. CHARTS VIEW (ESTRUCTURA TEMPORAL Y CURVAS DE RENDIMIENTO)
 // ========================================================
+const CURVE_SHAPE_META = {
+  normal: {
+    label: 'Normal o Positiva',
+    cardId: 'shapeCardNormal',
+    badgeId: 'badgeShapeNormal',
+    color: '#38bdf8',
+    explain: 'Los plazos largos rinden más que los cortos. Refleja la prima por plazo/liquidez habitual: el inversor exige mayor rendimiento por inmovilizar capital durante más tiempo.'
+  },
+  plana: {
+    label: 'Plana',
+    cardId: 'shapeCardPlana',
+    badgeId: 'badgeShapePlana',
+    color: '#94a3b8',
+    explain: 'Todos los plazos ofrecen rendimientos similares. Suele aparecer en etapas de transición cuando el mercado no anticipa movimientos bruscos de tasas.'
+  },
+  invertida: {
+    label: 'Invertida',
+    cardId: 'shapeCardInvertida',
+    badgeId: 'badgeShapeInvertida',
+    color: '#f43f5e',
+    explain: 'Los plazos cortos rinden más que los largos. Indica que el mercado descuenta una baja futura de tasas (desinflación) o percibe mayor tensión de refinanciación en el corto plazo.'
+  },
+  joroba: {
+    label: 'Con Joroba',
+    cardId: 'shapeCardJoroba',
+    badgeId: 'badgeShapeJoroba',
+    color: '#10b981',
+    explain: 'El rendimiento sube desde el tramo corto hasta alcanzar un máximo en el tramo medio y luego se aplana o cede en el tramo largo, concentrando la prima de riesgo en los vencimientos intermedios.'
+  }
+};
+
+function initChartsEvents() {
+  document.querySelectorAll('[data-curve-fam]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      curveFamily = btn.dataset.curveFam;
+      document.querySelectorAll('[data-curve-fam]').forEach(b => b.classList.toggle('active', b.dataset.curveFam === curveFamily));
+      renderCharts();
+    });
+  });
+
+  document.querySelectorAll('[data-curve-axis]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      curveAxis = btn.dataset.curveAxis;
+      document.querySelectorAll('[data-curve-axis]').forEach(b => b.classList.toggle('active', b.dataset.curveAxis === curveAxis));
+      renderCharts();
+    });
+  });
+
+  document.querySelectorAll('.curve-shape-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const sh = card.dataset.shape;
+      curveTheoryOverlay = (curveTheoryOverlay === sh) ? null : sh;
+      renderCharts();
+    });
+  });
+
+  const btnReset = document.getElementById('btnResetTheoryCurve');
+  if (btnReset) {
+    btnReset.addEventListener('click', () => {
+      curveTheoryOverlay = null;
+      renderCharts();
+    });
+  }
+}
+
+// Years to maturity of a bond (prefer exact days_to_maturity / 365, fallback to last cashflow year)
+function bondYearsToMaturity(b) {
+  if (hasNum(b.days_to_maturity) && b.days_to_maturity > 0) return b.days_to_maturity / 365.0;
+  if (b.cashflows && b.cashflows.length > 0) {
+    return Math.max(...b.cashflows.map(c => c.years || 0));
+  }
+  return 0;
+}
+
+// X coordinate according to selected axis ('years' or 'md')
+function bondCurveX(b) {
+  if (curveAxis === 'md') {
+    if (hasNum(b.mod_duration) && b.mod_duration > 0) return b.mod_duration;
+    if (hasNum(b.duration) && b.duration > 0) return b.duration;
+  }
+  return bondYearsToMaturity(b);
+}
+
+/**
+ * Fits a smooth term-structure curve y(x) = b0 + b1*u + b2*u^2 with u = ln(max(x, 0.05))
+ * via regularized Ordinary Least Squares (Nelson-Siegel quadratic approximation).
+ * Because y(x) is a single-valued function of x, it never loops backward or zigzags due to
+ * coupon differences between adjacent bonds (Cap. 11.4 & Cap. 41 of the Diplomado).
+ */
+function fitTermStructureCurve(points, numGrid = 45) {
+  if (!points || points.length === 0) return { grid: [], predict: () => 0, b0: 0, b1: 0, b2: 0 };
+  const sorted = [...points].sort((a, b) => a.x - b.x);
+  const n = sorted.length;
+  const xMin = sorted[0].x;
+  const xMax = sorted[n - 1].x;
+
+  if (n === 1 || Math.abs(xMax - xMin) < 1e-4) {
+    const y0 = sorted[0].y;
+    return {
+      grid: [{ x: Math.max(0.1, xMin * 0.8), y: y0 }, { x: xMax * 1.2 + 0.5, y: y0 }],
+      predict: () => y0,
+      b0: y0, b1: 0, b2: 0
+    };
+  }
+
+  const uOf = (x) => Math.log(Math.max(x, 0.05));
+  const us = sorted.map(p => uOf(p.x));
+  const ys = sorted.map(p => p.y);
+  const uMean = us.reduce((a, b) => a + b, 0) / n;
+  const uCentered = us.map(u => u - uMean);
+
+  // Build 3x3 normal equations for y = a0 + a1*uc + a2*uc^2 with mild ridge penalty on curvature a2
+  let s0 = n, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+  let ty0 = 0, ty1 = 0, ty2 = 0;
+  for (let i = 0; i < n; i++) {
+    const uc = uCentered[i];
+    const uc2 = uc * uc;
+    const y = ys[i];
+    s1 += uc;
+    s2 += uc2;
+    s3 += uc2 * uc;
+    s4 += uc2 * uc2;
+    ty0 += y;
+    ty1 += uc * y;
+    ty2 += uc2 * y;
+  }
+
+  // If fewer than 3 distinct x values, use linear fit in log-tenor (a2 = 0)
+  const distinctX = new Set(sorted.map(p => p.x.toFixed(2))).size;
+  const ridge2 = distinctX >= 3 ? 0.12 : 1e6;
+  const A = [
+    [s0, s1, s2, ty0],
+    [s1, s2 + 1e-4, s3, ty1],
+    [s2, s3, s4 + ridge2, ty2]
+  ];
+
+  // Gaussian elimination with partial pivoting
+  for (let col = 0; col < 3; col++) {
+    let pivot = col;
+    for (let row = col + 1; row < 3; row++) {
+      if (Math.abs(A[row][col]) > Math.abs(A[pivot][col])) pivot = row;
+    }
+    const tmp = A[col]; A[col] = A[pivot]; A[pivot] = tmp;
+    const div = A[col][col] || 1e-9;
+    for (let j = col; j <= 3; j++) A[col][j] /= div;
+    for (let row = 0; row < 3; row++) {
+      if (row !== col) {
+        const factor = A[row][col];
+        for (let j = col; j <= 3; j++) A[row][j] -= factor * A[col][j];
+      }
+    }
+  }
+
+  const a0 = A[0][3], a1 = A[1][3], a2 = A[2][3];
+  const predict = (x) => {
+    const uc = uOf(x) - uMean;
+    return a0 + a1 * uc + a2 * uc * uc;
+  };
+
+  const grid = [];
+  for (let i = 0; i < numGrid; i++) {
+    const x = xMin + (xMax - xMin) * (i / (numGrid - 1));
+    grid.push({ x, y: predict(x) });
+  }
+  return { grid, predict, b0: a0, b1: a1, b2: a2 };
+}
+
+/**
+ * Classifies the fitted curve into one of the 4 canonical shapes from Unidad 4 (Cap. 11.2 / Lámina 27):
+ *   - 'normal'    : upward sloping (long > short)
+ *   - 'plana'     : flat across maturities
+ *   - 'invertida' : downward sloping (short > long)
+ *   - 'joroba'    : humped (rises to an intermediate peak and then declines or strongly flattens)
+ */
+function classifyCurveShape(grid, rawPoints = []) {
+  if (!grid || grid.length < 3) return { shape: 'plana', slope: 0, peakX: 0, span: 0 };
+  const n = grid.length;
+  const yStart = grid[0].y;
+  const yEnd = grid[n - 1].y;
+  const yMid = grid[Math.floor(n / 2)].y;
+
+  let maxIdx = 0, minIdx = 0;
+  for (let i = 1; i < n; i++) {
+    if (grid[i].y > grid[maxIdx].y) maxIdx = i;
+    if (grid[i].y < grid[minIdx].y) minIdx = i;
+  }
+  const yMax = grid[maxIdx].y;
+  const yMin = grid[minIdx].y;
+  const span = yMax - yMin;
+  const avgAbs = Math.max(4.0, Math.abs(yMid));
+  const flatThreshold = Math.max(0.55, avgAbs * 0.045);
+
+  if (span <= flatThreshold) {
+    return { shape: 'plana', slope: yEnd - yStart, peakX: grid[maxIdx].x, span };
+  }
+
+  // Check for interior hump on the fitted curve OR clear intermediate peak in raw observations
+  const riseToPeak = yMax - yStart;
+  const dropFromPeak = yMax - yEnd;
+  if (maxIdx > 2 && maxIdx < n - 3 && riseToPeak > 0.35 && dropFromPeak > 0.25) {
+    return { shape: 'joroba', slope: yEnd - yStart, peakX: grid[maxIdx].x, span };
+  }
+
+  // Also check if raw points sorted by x show an interior peak higher than the longest bond
+  if (rawPoints && rawPoints.length >= 4) {
+    const sp = [...rawPoints].sort((a, b) => a.x - b.x);
+    const firstY = sp[0].y;
+    const lastY = sp[sp.length - 1].y;
+    const midPoints = sp.slice(1, sp.length - 1);
+    const maxMid = midPoints.reduce((m, p) => p.y > m.y ? p : m, midPoints[0]);
+    if ((maxMid.y - firstY) > 0.8 && (maxMid.y - lastY) > 0.35) {
+      return { shape: 'joroba', slope: yEnd - yStart, peakX: maxMid.x, span };
+    }
+  }
+
+  if (yEnd > yStart) {
+    return { shape: 'normal', slope: yEnd - yStart, peakX: grid[maxIdx].x, span };
+  }
+  return { shape: 'invertida', slope: yEnd - yStart, peakX: grid[minIdx].x, span };
+}
+
+// Generates a theoretical reference curve over [xMin, xMax] centered around yCenter
+function buildTheoreticalCurve(shape, xMin, xMax, yCenter) {
+  const n = 45;
+  const spanY = Math.max(3.0, Math.abs(yCenter) * 0.28);
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1); // 0 .. 1
+    const x = xMin + (xMax - xMin) * t;
+    let y = yCenter;
+    if (shape === 'normal') {
+      // Concave upward-sloping curve
+      y = (yCenter - spanY * 0.55) + spanY * Math.pow(t, 0.58);
+    } else if (shape === 'plana') {
+      y = yCenter + 0.08 * Math.sin(t * Math.PI);
+    } else if (shape === 'invertida') {
+      // Downward-sloping curve
+      y = (yCenter + spanY * 0.55) - spanY * Math.pow(t, 0.62);
+    } else if (shape === 'joroba') {
+      // Humped curve peaking at t ~ 0.42 and declining afterwards
+      y = (yCenter - spanY * 0.45) + spanY * 1.35 * Math.sin(Math.pow(t, 0.72) * Math.PI * 0.88);
+    }
+    pts.push({ x, y });
+  }
+  return pts;
+}
+
+// Inline Chart.js plugin to draw ticker labels next to scatter points without overlapping
+const pointTickerLabelsPlugin = {
+  id: 'pointTickerLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    ctx.save();
+    ctx.font = 'bold 10.5px "JetBrains Mono", Consolas, monospace';
+    const placed = [];
+
+    chart.data.datasets.forEach((ds, dsIdx) => {
+      if (!ds.drawPointLabels) return;
+      const meta = chart.getDatasetMeta(dsIdx);
+      if (!meta || meta.hidden) return;
+
+      meta.data.forEach((elem, index) => {
+        const raw = ds.data[index];
+        if (!raw || !raw.symbol) return;
+        const { x, y } = elem.tooltipPosition();
+        if (x < chartArea.left || x > chartArea.right || y < chartArea.top || y > chartArea.bottom) return;
+
+        const text = raw.symbol;
+        const tw = ctx.measureText(text).width;
+        // Try candidate offsets around the point to prevent label collisions
+        const candidates = [
+          { dx: 8, dy: -8 },
+          { dx: 8, dy: 12 },
+          { dx: -tw - 8, dy: -8 },
+          { dx: -tw - 8, dy: 12 },
+          { dx: -tw / 2, dy: -13 },
+          { dx: -tw / 2, dy: 16 }
+        ];
+        let chosen = candidates[0];
+        for (const c of candidates) {
+          let lx = Math.min(Math.max(chartArea.left + 2, x + c.dx), chartArea.right - tw - 2);
+          let ly = Math.min(Math.max(chartArea.top + 10, y + c.dy), chartArea.bottom - 4);
+          const collides = placed.some(p => Math.abs(p.x - lx) < (tw + 6) && Math.abs(p.y - ly) < 12);
+          if (!collides) {
+            chosen = { x: lx, y: ly };
+            break;
+          }
+          chosen = { x: lx, y: ly };
+        }
+        placed.push(chosen);
+
+        ctx.fillStyle = 'rgba(12, 16, 23, 0.82)';
+        ctx.fillRect(chosen.x - 2, chosen.y - 9, tw + 4, 12);
+        ctx.fillStyle = ds.borderColor || '#f8fafc';
+        ctx.fillText(text, chosen.x, chosen.y);
+      });
+    });
+    ctx.restore();
+  }
+};
+
+function updateCurveShapeCardsUI(detectedShapes, primaryShape) {
+  ['normal', 'plana', 'invertida', 'joroba'].forEach(sh => {
+    const meta = CURVE_SHAPE_META[sh];
+    const card = document.getElementById(meta.cardId);
+    const badge = document.getElementById(meta.badgeId);
+    if (!card || !badge) return;
+
+    const isMarketMatch = detectedShapes.includes(sh);
+    const isTheoryMatch = (curveTheoryOverlay === sh);
+
+    card.classList.toggle('active-market', isMarketMatch);
+    card.classList.toggle('active-theory', isTheoryMatch);
+
+    badge.className = 'curve-shape-badge';
+    if (isTheoryMatch) {
+      badge.classList.add('show-theory');
+      badge.innerText = 'MODELO TEÓRICO ACTIVO';
+    } else if (isMarketMatch) {
+      badge.classList.add('show-market');
+      badge.innerText = sh === primaryShape ? 'FORMA ACTUAL EN MERCADO' : 'TAMBIÉN OBSERVADA';
+    } else {
+      badge.innerText = '';
+    }
+  });
+
+  const btnReset = document.getElementById('btnResetTheoryCurve');
+  if (btnReset) btnReset.style.display = curveTheoryOverlay ? 'inline-block' : 'none';
+}
+
 function renderCharts() {
   renderCurveChart();
   renderParityChart();
@@ -1383,75 +1720,207 @@ function renderCharts() {
 
 function renderCurveChart() {
   const ctx = document.getElementById('curveChart');
-  if (!ctx) return;
+  if (!ctx || typeof Chart === 'undefined') return;
   if (curveChart) curveChart.destroy();
 
-  const bonarData = [];
-  const globalData = [];
+  const xLabel = curveAxis === 'md' ? 'Duration Modificada (Años)' : 'Plazo al Vencimiento (Años)';
+  const seriesList = [];
 
-  allBonds.forEach(b => {
-    // One point per bond: the species quoted in its own payment currency (AL30D, GD30D...)
-    if (b.family === 'soberano_usd' && b.is_native_quote && teaOf(b) !== null && b.mod_duration > 0) {
-      const point = { x: b.mod_duration, y: teaOf(b), symbol: b.symbol };
-      if (b.symbol.startsWith('AL') || b.symbol.startsWith('AE')) {
-        bonarData.push(point);
-      } else if (b.symbol.startsWith('GD')) {
-        globalData.push(point);
+  if (curveFamily === 'usd') {
+    const bonares = [];
+    const globales = [];
+    allBonds.forEach(b => {
+      const tea = teaOf(b);
+      const xVal = bondCurveX(b);
+      if (b.family === 'soberano_usd' && b.is_native_quote && tea !== null && tea > -20 && tea < 60 && xVal > 0) {
+        const pt = {
+          x: xVal, y: tea, symbol: b.symbol,
+          years: bondYearsToMaturity(b), md: b.mod_duration || 0, parity: b.parity || 0
+        };
+        if (b.symbol.startsWith('AL') || b.symbol.startsWith('AE') || b.symbol.startsWith('AO') || b.symbol.startsWith('AN')) {
+          bonares.push(pt);
+        } else if (b.symbol.startsWith('GD')) {
+          globales.push(pt);
+        }
       }
-    }
+    });
+    if (bonares.length) seriesList.push({ name: 'Bonares (Ley Arg)', color: '#38bdf8', points: bonares });
+    if (globales.length) seriesList.push({ name: 'Globales (Ley NY)', color: '#10b981', points: globales });
+  } else if (curveFamily === 'lecap') {
+    const letras = [];
+    allBonds.forEach(b => {
+      const tea = teaOf(b);
+      const xVal = bondCurveX(b);
+      if (b.family === 'letra' && b.is_native_quote && b.currency === 'ARS' && !b.is_cer && tea !== null && tea > 0 && tea < 150 && xVal > 0) {
+        letras.push({
+          x: xVal, y: tea, symbol: b.symbol,
+          years: bondYearsToMaturity(b), md: b.mod_duration || 0, parity: b.parity || 0
+        });
+      }
+    });
+    if (letras.length) seriesList.push({ name: 'Tasa Fija ARS (LECAP / BONCAP)', color: '#f59e0b', points: letras });
+  } else if (curveFamily === 'cer') {
+    const cerPts = [];
+    allBonds.forEach(b => {
+      const tea = teaOf(b);
+      const xVal = bondCurveX(b);
+      if ((b.family === 'cer' || b.is_cer) && b.is_native_quote && b.currency === 'ARS' && tea !== null && tea > -25 && tea < 60 && xVal > 0) {
+        cerPts.push({
+          x: xVal, y: tea, symbol: b.symbol,
+          years: bondYearsToMaturity(b), md: b.mod_duration || 0, parity: b.parity || 0
+        });
+      }
+    });
+    if (cerPts.length) seriesList.push({ name: 'Bonos CER (TIR Real % sobre CER)', color: '#c084fc', points: cerPts });
+  }
+
+  const datasets = [];
+  const detectedShapes = [];
+  const diagnosisParts = [];
+  let allX = [];
+  let allY = [];
+
+  seriesList.forEach(s => {
+    s.points.sort((a, b) => a.x - b.x);
+    s.points.forEach(p => { allX.push(p.x); allY.push(p.y); });
+
+    const fit = fitTermStructureCurve(s.points);
+    const diag = classifyCurveShape(fit.grid, s.points);
+    if (!detectedShapes.includes(diag.shape)) detectedShapes.push(diag.shape);
+
+    const shapeMeta = CURVE_SHAPE_META[diag.shape];
+    // Identify cheapest bond (highest residual above curve) and richest bond (lowest residual below curve)
+    let cheap = null, rich = null;
+    s.points.forEach(p => {
+      const diff = p.y - fit.predict(p.x);
+      if (!cheap || diff > cheap.diff) cheap = { symbol: p.symbol, diff };
+      if (!rich || diff < rich.diff) rich = { symbol: p.symbol, diff };
+    });
+    const relNote = (s.points.length >= 3 && cheap && rich)
+      ? ` Sobre la curva (mayor TIR para su plazo): <strong>${cheap.symbol}</strong> (${cheap.diff >= 0 ? '+' : ''}${cheap.diff.toFixed(2)} pp); debajo de la curva: <strong>${rich.symbol}</strong> (${rich.diff.toFixed(2)} pp).`
+      : '';
+
+    diagnosisParts.push(
+      `<div><span style="color:${s.color}; font-weight:800;">● ${s.name}:</span> Forma <strong>${shapeMeta.label.toUpperCase()}</strong> ` +
+      `(tramo corto ${fit.grid[0].y.toFixed(2)}% → tramo largo ${fit.grid[fit.grid.length - 1].y.toFixed(2)}%, amplitud ${diag.span.toFixed(2)} pp). ` +
+      `${shapeMeta.explain}${relNote}</div>`
+    );
+
+    // 1. Smooth fitted curve dataset (continuous line, no dots)
+    datasets.push({
+      label: `Curva ${s.name} (${shapeMeta.label})`,
+      data: fit.grid,
+      borderColor: s.color,
+      backgroundColor: 'transparent',
+      borderWidth: 2.6,
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      showLine: true,
+      tension: 0.25,
+      drawPointLabels: false
+    });
+
+    // 2. Observed bonds scatter dataset (dots + ticker labels)
+    datasets.push({
+      label: `Bonos ${s.name}`,
+      data: s.points,
+      backgroundColor: s.color,
+      borderColor: s.color,
+      pointRadius: 6,
+      pointHoverRadius: 8,
+      showLine: false,
+      drawPointLabels: true
+    });
   });
 
-  bonarData.sort((a, b) => a.x - b.x);
-  globalData.sort((a, b) => a.x - b.x);
+  const primaryShape = detectedShapes[0] || 'normal';
+  updateCurveShapeCardsUI(detectedShapes, primaryShape);
+
+  // Optional Theoretical Reference Curve overlay when user clicks one of the 4 cards
+  if (curveTheoryOverlay) {
+    const xMin = allX.length ? Math.min(...allX) : 1.0;
+    const xMax = allX.length ? Math.max(...allX) : 12.0;
+    const yAvg = allY.length ? (allY.reduce((a, b) => a + b, 0) / allY.length) : 10.0;
+    const thMeta = CURVE_SHAPE_META[curveTheoryOverlay];
+    const thGrid = buildTheoreticalCurve(curveTheoryOverlay, xMin, Math.max(xMin + 2.0, xMax), yAvg);
+
+    datasets.push({
+      label: `Modelo Teórico: Curva ${thMeta.label}`,
+      data: thGrid,
+      borderColor: '#fbbf24',
+      backgroundColor: 'transparent',
+      borderWidth: 2.5,
+      borderDash: [7, 5],
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      showLine: true,
+      tension: 0.3,
+      drawPointLabels: false
+    });
+
+    diagnosisParts.unshift(
+      `<div style="color:#fbbf24; margin-bottom:4px;"><strong>📐 Previsualización Teórica Activa (${thMeta.label}):</strong> ${thMeta.explain} <em>(Línea punteada amarilla en el gráfico; haz click nuevamente en la tarjeta para ocultarla).</em></div>`
+    );
+  }
+
+  const banner = document.getElementById('curveDiagnosisBanner');
+  if (banner) {
+    banner.innerHTML = diagnosisParts.length
+      ? diagnosisParts.join('')
+      : 'No hay suficientes instrumentos con TIR calculable para trazar esta familia en este momento.';
+  }
+
+  const titleEl = document.getElementById('curveChartTitle');
+  if (titleEl) {
+    const famLabel = curveFamily === 'usd' ? 'Soberana USD (Bonares vs Globales)'
+      : (curveFamily === 'lecap' ? 'Pesos Tasa Fija (LECAP / BONCAP)' : 'Pesos CER (Boncer)');
+    titleEl.innerText = `Curva ${famLabel}: TIR (TEA %) vs ${xLabel}`;
+  }
+
+  qaTrace('Curvas', `Familia=${curveFamily} · EjeX=${curveAxis}`, {
+    'Series graficadas': seriesList.map(s => ({ nombre: s.name, bonos: s.points.length })),
+    'Formas detectadas': detectedShapes,
+    'Overlay teórico': curveTheoryOverlay || 'ninguno'
+  }, seriesList.flatMap(s => s.points.map(p => ({ ticker: p.symbol, x: round4(p.x), 'TIR_TEA_%': round4(p.y), plazo_años: round4(p.years), MD: round4(p.md) }))));
 
   curveChart = new Chart(ctx, {
     type: 'scatter',
-    data: {
-      datasets: [
-        {
-          label: 'Bonares (Ley Arg)',
-          data: bonarData,
-          backgroundColor: '#38bdf8',
-          borderColor: '#38bdf8',
-          pointRadius: 6,
-          pointHoverRadius: 8,
-          showLine: true,
-          tension: 0.3
-        },
-        {
-          label: 'Globales (Ley NY)',
-          data: globalData,
-          backgroundColor: '#10b981',
-          borderColor: '#10b981',
-          pointRadius: 6,
-          pointHoverRadius: 8,
-          showLine: true,
-          tension: 0.3
-        }
-      ]
-    },
+    plugins: [pointTickerLabelsPlugin],
+    data: { datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 18, right: 28, bottom: 6, left: 6 } },
       plugins: {
-        legend: { labels: { color: '#94a3b8' } },
+        legend: {
+          labels: {
+            color: '#cbd5e1',
+            filter: (item) => !item.text.startsWith('Bonos ')
+          }
+        },
         tooltip: {
           backgroundColor: '#1a1f2c',
           callbacks: {
-            label: (ctx) => `${ctx.raw.symbol}: MD ${ctx.raw.x.toFixed(2)} a | TIR ${ctx.raw.y.toFixed(2)}%`
+            label: (c) => {
+              const r = c.raw;
+              if (r && r.symbol) {
+                return `${r.symbol} · TIR ${r.y.toFixed(2)}% TEA · Plazo ${r.years.toFixed(2)} a · MD ${r.md.toFixed(2)} a`;
+              }
+              return `${c.dataset.label}: ${r.y.toFixed(2)}% (${xLabel}: ${r.x.toFixed(2)} a)`;
+            }
           }
         }
       },
       scales: {
         x: {
-          title: { display: true, text: 'Duration Modificada (Años)', color: '#94a3b8' },
+          title: { display: true, text: xLabel, color: '#94a3b8' },
           grid: { color: '#202738' },
           ticks: { color: '#94a3b8' }
         },
         y: {
-          title: { display: true, text: 'TIR (TEA %)', color: '#94a3b8' },
+          title: { display: true, text: curveFamily === 'cer' ? 'TIR Real sobre CER (TEA %)' : 'TIR (TEA %)', color: '#94a3b8' },
           grid: { color: '#202738' },
-          ticks: { color: '#94a3b8' }
+          ticks: { color: '#94a3b8', callback: (v) => `${Number(v).toFixed(1)}%` }
         }
       }
     }
@@ -1460,50 +1929,110 @@ function renderCurveChart() {
 
 function renderParityChart() {
   const ctx = document.getElementById('parityChart');
-  if (!ctx) return;
+  if (!ctx || typeof Chart === 'undefined') return;
   if (parityChart) parityChart.destroy();
 
-  const points = [];
-  allBonds.forEach(b => {
-    if (b.family === 'soberano_usd' && b.is_native_quote && b.parity > 0 && b.mod_duration > 0) {
-      points.push({ x: b.mod_duration, y: b.parity, symbol: b.symbol });
-    }
+  const xLabel = curveAxis === 'md' ? 'Duration Modificada (Años)' : 'Plazo al Vencimiento (Años)';
+  const seriesList = [];
+
+  if (curveFamily === 'usd') {
+    const bonares = [];
+    const globales = [];
+    allBonds.forEach(b => {
+      const xVal = bondCurveX(b);
+      if (b.family === 'soberano_usd' && b.is_native_quote && b.parity > 0 && b.parity < 150 && xVal > 0) {
+        const pt = { x: xVal, y: b.parity, symbol: b.symbol, tir: teaOf(b) };
+        if (b.symbol.startsWith('AL') || b.symbol.startsWith('AE') || b.symbol.startsWith('AO') || b.symbol.startsWith('AN')) {
+          bonares.push(pt);
+        } else if (b.symbol.startsWith('GD')) {
+          globales.push(pt);
+        }
+      }
+    });
+    if (bonares.length) seriesList.push({ name: 'Paridad Bonares (Ley Arg)', color: '#38bdf8', points: bonares });
+    if (globales.length) seriesList.push({ name: 'Paridad Globales (Ley NY)', color: '#a855f7', points: globales });
+  } else {
+    const pts = [];
+    allBonds.forEach(b => {
+      const xVal = bondCurveX(b);
+      const matchFam = curveFamily === 'lecap' ? (b.family === 'letra' && !b.is_cer) : (b.family === 'cer' || b.is_cer);
+      if (matchFam && b.is_native_quote && b.currency === 'ARS' && b.parity > 0 && b.parity < 200 && xVal > 0) {
+        pts.push({ x: xVal, y: b.parity, symbol: b.symbol, tir: teaOf(b) });
+      }
+    });
+    if (pts.length) seriesList.push({ name: 'Paridad (%)', color: '#a855f7', points: pts });
+  }
+
+  const datasets = [];
+  seriesList.forEach(s => {
+    s.points.sort((a, b) => a.x - b.x);
+    const fit = fitTermStructureCurve(s.points);
+    datasets.push({
+      label: `Tendencia ${s.name}`,
+      data: fit.grid,
+      borderColor: s.color,
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderDash: [4, 4],
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      showLine: true,
+      tension: 0.25,
+      drawPointLabels: false
+    });
+    datasets.push({
+      label: s.name,
+      data: s.points,
+      backgroundColor: s.color,
+      borderColor: s.color,
+      pointRadius: 6,
+      pointHoverRadius: 8,
+      showLine: false,
+      drawPointLabels: true
+    });
   });
+
+  const pTitle = document.getElementById('parityChartTitle');
+  if (pTitle) pTitle.innerText = `Dispersión de Paridad (%) vs ${xLabel}`;
 
   parityChart = new Chart(ctx, {
     type: 'scatter',
-    data: {
-      datasets: [{
-        label: 'Paridad vs Duration',
-        data: points,
-        backgroundColor: '#a855f7',
-        borderColor: '#a855f7',
-        pointRadius: 6,
-        pointHoverRadius: 8
-      }]
-    },
+    plugins: [pointTickerLabelsPlugin],
+    data: { datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 18, right: 28, bottom: 6, left: 6 } },
       plugins: {
-        legend: { display: false },
+        legend: {
+          labels: {
+            color: '#cbd5e1',
+            filter: (item) => !item.text.startsWith('Tendencia ')
+          }
+        },
         tooltip: {
           backgroundColor: '#1a1f2c',
           callbacks: {
-            label: (ctx) => `${ctx.raw.symbol}: MD ${ctx.raw.x.toFixed(2)} a | Paridad ${ctx.raw.y.toFixed(1)}%`
+            label: (c) => {
+              const r = c.raw;
+              if (r && r.symbol) {
+                return `${r.symbol} · Paridad ${r.y.toFixed(1)}% · ${xLabel}: ${r.x.toFixed(2)} a${hasNum(r.tir) ? ` · TIR ${r.tir.toFixed(2)}%` : ''}`;
+              }
+              return `Paridad tendencial: ${r.y.toFixed(1)}% (${r.x.toFixed(2)} a)`;
+            }
           }
         }
       },
       scales: {
         x: {
-          title: { display: true, text: 'Duration Modificada (Años)', color: '#94a3b8' },
+          title: { display: true, text: xLabel, color: '#94a3b8' },
           grid: { color: '#202738' },
           ticks: { color: '#94a3b8' }
         },
         y: {
-          title: { display: true, text: 'Paridad (%)', color: '#94a3b8' },
+          title: { display: true, text: 'Paridad (Precio / Valor Técnico %)', color: '#94a3b8' },
           grid: { color: '#202738' },
-          ticks: { color: '#94a3b8' }
+          ticks: { color: '#94a3b8', callback: (v) => `${Number(v).toFixed(0)}%` }
         }
       }
     }
@@ -1711,12 +2240,16 @@ function exportCSV() {
 }
 
 // ========================================================
-// 7. SIMULADOR DE ESCENARIOS MACRO (ARS vs USD)
+// 7. COMPARACIÓN DE BONOS (PESOS ARS vs DÓLARES USD)
 // ========================================================
-// All three views of a return are shown side by side so the sign of each number can be traced:
-//   NOMINAL en pesos  |  REAL (deflactado por inflación)  |  EN DÓLARES (deflactado por devaluación)
-// Fisher is always applied on effective annual rates:  real = (1 + nominal) / (1 + inflación) - 1.
-// Subtracting percentages (40 - 50 = -10) is never used.
+// Criterio cuantitativo (Diplomado Instrumentos Financieros · Unidad 4, Cap. 8.2 y Cap. 10):
+//   - Pata ARS: rinde una tasa efectiva anual (arsNominal).
+//     1) Frente a la inflación en pesos (π):  arsReal  = (1 + arsNominal) / (1 + π) - 1  (Ecuación de Fisher).
+//     2) Frente a la devaluación del peso (d): arsInUsd = (1 + arsNominal) / (1 + d) - 1.
+//     3) Erosión macroeconómica efectiva sobre el peso: max(π, d) -> arsEffective = min(arsReal, arsInUsd).
+//   - Pata USD (Hard Dollar): paga dólares billete (usdInUsd).
+//     El bono en pesos SOLO gana si supera al bono en dólares tanto frente a la inflación (poder adquisitivo)
+//     como frente a la devaluación cambiaria: arsReal > usdInUsd  Y  arsInUsd > usdInUsd.
 function initScenariosEvents() {
   ['scenarioArsSelect', 'scenarioUsdSelect', 'scenarioInfInput', 'scenarioDevInput', 'scenarioInfUnit', 'scenarioDevUnit'].forEach(id => {
     const el = document.getElementById(id);
@@ -1739,7 +2272,13 @@ function populateScenarios() {
   const fill = (selId, ccy, preferred) => {
     const sel = document.getElementById(selId);
     if (!sel) return;
-    const bonds = dcfUniverse(ccy).sort((a, b) => (b.volume_amount || 0) - (a.volume_amount || 0));
+    // Order fixed-rate instruments first in ARS, then by liquidity
+    const bonds = dcfUniverse(ccy).sort((a, b) => {
+      if (ccy === 'ARS' && Boolean(a.is_cer) !== Boolean(b.is_cer)) {
+        return a.is_cer ? 1 : -1;
+      }
+      return (b.volume_amount || 0) - (a.volume_amount || 0);
+    });
     const prev = sel.value;
     sel.innerHTML = '';
     if (bonds.length === 0) {
@@ -1752,16 +2291,16 @@ function populateScenarios() {
     bonds.forEach(b => {
       const opt = document.createElement('option');
       opt.value = b.symbol;
-      opt.innerText = `${b.symbol} · ${b.type} · TIR ${fmtPct(teaOf(b))} TEA ${b.is_cer ? 'real' : (ccy === 'ARS' ? 'nominal' : '')}`;
+      opt.innerText = `${b.symbol} · ${b.type} · TIR ${fmtPct(teaOf(b))} TEA`;
       sel.appendChild(opt);
     });
     if (prev && bonds.some(b => b.symbol === prev)) sel.value = prev;
     else sel.value = (preferred(bonds) || bonds[0]).symbol;
   };
-  // Default peso leg: the longest fixed-rate instrument (closest in term to a dollar bond)
+  // Default peso leg: longest fixed-rate instrument (LECAP/BONCAP)
   fill('scenarioArsSelect', 'ARS', (bonds) => bonds.filter(b => !b.is_cer)
     .sort((a, b) => (b.days_to_maturity || 0) - (a.days_to_maturity || 0))[0]);
-  fill('scenarioUsdSelect', 'USD', (bonds) => bonds.find(b => ['AL30D', 'GD30D'].includes(b.symbol)));
+  fill('scenarioUsdSelect', 'USD', (bonds) => bonds.find(b => ['AL30D', 'GD30D', 'AO29D'].includes(b.symbol)));
 
   // Default expectation: BCRA REM (already annual)
   const infInp = document.getElementById('scenarioInfInput');
@@ -1771,11 +2310,11 @@ function populateScenarios() {
   }
 }
 
-// User expectation -> effective annual rate. A monthly figure is compounded 12 times, never multiplied by 12.
+// User expectation -> effective annual rate. A monthly figure is compounded 12 times: (1 + TEM)^12 - 1.
 function scenarioRateTEA(inputId, unitId) {
   const raw = parseFloat(document.getElementById(inputId).value);
   const unit = document.getElementById(unitId).value;
-  const value = isFinite(raw) ? raw : 0;
+  const value = isFinite(raw) ? Math.max(-99, raw) : 0;
   return { raw: value, unit, tea: unit === 'mensual' ? monthlyToTEA(value) : value };
 }
 
@@ -1801,7 +2340,7 @@ function runScenarios() {
     return;
   }
 
-  const yrs = parseFloat(document.getElementById('scenarioYearsSlider').value) || 5.0;
+  const yrs = parseFloat(document.getElementById('scenarioYearsSlider').value) || 1.0;
   const inf = scenarioRateTEA('scenarioInfInput', 'scenarioInfUnit');
   const dev = scenarioRateTEA('scenarioDevInput', 'scenarioDevUnit');
 
@@ -1813,65 +2352,107 @@ function runScenarios() {
     return;
   }
 
-  // --- ARS leg. A CER bond yields a REAL rate; a fixed-rate one yields a NOMINAL rate.
-  const arsNominal = bArs.is_cer ? compound(baseArs.tea, inf.tea) : baseArs.tea;
-  const arsReal = bArs.is_cer ? baseArs.tea : deflate(baseArs.tea, inf.tea);
+  // --- Pata en Pesos (ARS): se evalúa con su tasa efectiva anual directa frente a la inflación y la devaluación.
+  // Ecuación de Fisher:
+  //   arsReal  = (1 + arsNominal) / (1 + inflación) - 1
+  //   arsInUsd = (1 + arsNominal) / (1 + devaluación) - 1
+  const arsNominal = baseArs.tea;
+  const arsReal = deflate(arsNominal, inf.tea);
   const arsInUsd = deflate(arsNominal, dev.tea);
+  // El peso sufre la mayor de las dos erosiones macroeconómicas (inflación interna o devaluación cambiaria):
+  const macroErosionArs = Math.max(inf.tea, dev.tea);
+  const arsEffective = Math.min(arsReal, arsInUsd); // = deflate(arsNominal, macroErosionArs)
 
-  // --- USD leg. Its peso return is the dollar yield compounded with the devaluation.
+  // --- Pata en Dólares (USD - Hard Dollar): paga dólares billete (usdInUsd).
   const usdInUsd = baseUsd.tea;
   const usdNominalArs = compound(usdInUsd, dev.tea);
-  const usdRealArs = deflate(usdNominalArs, inf.tea);
+  // Un bono Hard Dollar preserva moneda dura frente a la inflación doméstica en pesos, y gana poder de compra adicional si d > π:
+  const usdReal = deflate(compound(usdInUsd, macroErosionArs), inf.tea);
 
   const unitTxt = (r, what) => r.unit === 'mensual'
     ? `${what} ${r.raw.toFixed(2)}% mensual → (1 + ${r.raw.toFixed(2)}%)^12 − 1 = ${r.tea.toFixed(2)}% TEA`
     : `${what} ${r.tea.toFixed(2)}% TEA`;
-  setText('scenAssumptions', `Supuestos anualizados: ${unitTxt(inf, 'inflación')} · ${unitTxt(dev, 'devaluación')}`);
+  setText('scenAssumptions', `Supuestos anualizados: ${unitTxt(inf, 'inflación en pesos')} · ${unitTxt(dev, 'devaluación cambiaria')}`);
 
   setText('scenArsNominal', fmtPct(arsNominal));
   setText('scenArsReal', fmtPct(arsReal));
   setText('scenArsUsd', fmtPct(arsInUsd));
-  setText('scenArsFormula', bArs.is_cer
-    ? `CER: TIR real ${baseArs.tea.toFixed(2)}% → nominal = (1+${baseArs.tea.toFixed(2)}%)·(1+${inf.tea.toFixed(2)}%)−1 → en USD = (1+nominal)/(1+${dev.tea.toFixed(2)}%)−1`
-    : `Tasa fija: TIR nominal ${baseArs.tea.toFixed(2)}% → real = (1+nominal)/(1+${inf.tea.toFixed(2)}%)−1 → en USD = (1+nominal)/(1+${dev.tea.toFixed(2)}%)−1`);
+
+  // Color feedback for negative vs positive returns on the ARS card
+  const elArsReal = document.getElementById('scenArsReal');
+  if (elArsReal) elArsReal.style.color = arsReal < 0 ? '#f43f5e' : (arsReal > usdInUsd ? '#10b981' : '#f8fafc');
+  const elArsUsd = document.getElementById('scenArsUsd');
+  if (elArsUsd) elArsUsd.style.color = arsInUsd < 0 ? '#f43f5e' : 'var(--primary-cyan)';
+
+  setText('scenArsFormula',
+    `Fisher: TIR ${arsNominal.toFixed(2)}% → real = (1+${arsNominal.toFixed(2)}%) / (1+${inf.tea.toFixed(1)}%) − 1 = ${arsReal.toFixed(2)}% · en USD = (1+${arsNominal.toFixed(2)}%) / (1+${dev.tea.toFixed(1)}%) − 1 = ${arsInUsd.toFixed(2)}%`);
   setText('scenArsBaseTir', `Base: ${baseArs.source}`);
 
   setText('scenUsdUsd', fmtPct(usdInUsd));
   setText('scenUsdNominal', fmtPct(usdNominalArs));
-  setText('scenUsdReal', fmtPct(usdRealArs));
-  setText('scenUsdFormula', `TIR en USD ${usdInUsd.toFixed(2)}% → nominal en pesos = (1+${usdInUsd.toFixed(2)}%)·(1+${dev.tea.toFixed(2)}%)−1 → real = (1+nominal)/(1+${inf.tea.toFixed(2)}%)−1`);
+  setText('scenUsdReal', fmtPct(usdReal));
+  setText('scenUsdFormula',
+    `Hard Dollar: TIR ${usdInUsd.toFixed(2)}% en USD → en ARS (con deval. ${dev.tea.toFixed(1)}%) = (1+${usdInUsd.toFixed(2)}%)·(1+${dev.tea.toFixed(1)}%) − 1 = ${usdNominalArs.toFixed(2)}%`);
   setText('scenUsdBaseTir', `Base: ${baseUsd.source}`);
 
-  // Winner: both legs measured in the same unit (USD, TEA). The ranking is identical in real pesos.
-  const arsWins = arsInUsd > usdInUsd;
-  const gap = Math.abs(arsInUsd - usdInUsd);
-  // Devaluation at which both alternatives tie: (1 + nominal ARS) / (1 + TIR USD) - 1
-  const breakevenDev = deflate(arsNominal, usdInUsd);
+  // Regla de decisión (Unidad 4, Cap. 8.2):
+  // El bono en pesos gana SÓLO si supera al bono en dólares tanto frente a la inflación (arsReal > usdInUsd)
+  // como frente a la devaluación (arsInUsd > usdInUsd), es decir: arsEffective > usdInUsd.
+  const arsWins = arsEffective > usdInUsd;
+  const gap = Math.abs(arsEffective - usdInUsd);
+  // Tasa máxima de inflación y devaluación que soporta el bono en pesos antes de perder contra el bono en USD:
+  const breakevenRate = deflate(arsNominal, usdInUsd);
+
+  const arsCard = document.getElementById('scenArsCard');
+  const usdCard = document.getElementById('scenUsdCard');
+  if (arsCard) arsCard.style.borderColor = arsWins ? 'var(--primary-cyan)' : 'var(--border-subtle)';
+  if (usdCard) usdCard.style.borderColor = !arsWins ? 'var(--accent-green)' : 'var(--border-subtle)';
+
   if (arsWins) {
-    title.innerText = `🏆 Ganador: ${bArs.symbol} (alternativa en pesos)`;
+    title.innerText = `🏆 Ganador: ${bArs.symbol} (Alternativa en Pesos)`;
     title.style.color = 'var(--primary-cyan)';
-    desc.innerText = `Medido en dólares, ${bArs.symbol} rinde ${arsInUsd.toFixed(2)}% TEA contra ${usdInUsd.toFixed(2)}% de ${bUsd.symbol} (+${gap.toFixed(2)} pp). Los pesos ganan mientras la devaluación sea menor a ${breakevenDev.toFixed(1)}% anual.`;
+    desc.innerText =
+      `El bono en pesos (${bArs.symbol}, TIR ${arsNominal.toFixed(2)}% TEA) supera al bono en dólares (${bUsd.symbol}, TIR ${usdInUsd.toFixed(2)}% TEA en USD) ` +
+      `tanto en poder adquisitivo real (+${arsReal.toFixed(2)}% vs inflación de ${inf.tea.toFixed(1)}%) como medido en dólares (+${arsInUsd.toFixed(2)}% vs devaluación de ${dev.tea.toFixed(1)}%), ` +
+      `con una ventaja neta de +${gap.toFixed(2)} pp. La alternativa en pesos gana mientras la inflación y la devaluación se mantengan por debajo de ${breakevenRate.toFixed(1)}% anual.`;
   } else {
-    title.innerText = `🏆 Ganador: ${bUsd.symbol} (alternativa en dólares)`;
+    title.innerText = `🏆 Ganador: ${bUsd.symbol} (Alternativa en Dólares)`;
     title.style.color = 'var(--accent-green)';
-    desc.innerText = `Medido en dólares, ${bUsd.symbol} rinde ${usdInUsd.toFixed(2)}% TEA contra ${arsInUsd.toFixed(2)}% de ${bArs.symbol} (+${gap.toFixed(2)} pp). Los pesos recién empatan si la devaluación baja a ${breakevenDev.toFixed(1)}% anual.`;
-  }
-  if (arsReal < 0) {
-    desc.innerText += ` El rendimiento real de ${bArs.symbol} es negativo porque su tasa nominal (${arsNominal.toFixed(1)}%) queda por debajo de la inflación esperada (${inf.tea.toFixed(1)}%).`;
+    const lostByInflation = inf.tea >= dev.tea && arsReal <= usdInUsd;
+    const reasonText = lostByInflation
+      ? `Con una inflación esperada en pesos de ${inf.tea.toFixed(1)}% anual frente a una TIR nominal de ${arsNominal.toFixed(2)}% en ${bArs.symbol}, ` +
+        `el rendimiento real en pesos cae a ${arsReal.toFixed(2)}% (${arsReal < 0 ? 'pérdida de poder adquisitivo' : 'inferior al bono en USD'}), mientras que ${bUsd.symbol} preserva capital en moneda dura rindiendo +${usdInUsd.toFixed(2)}% TEA en USD (+${usdNominalArs.toFixed(2)}% en ARS con ${dev.tea.toFixed(1)}% de devaluación).`
+      : `Con una devaluación esperada de ${dev.tea.toFixed(1)}% anual, ${bArs.symbol} rinde ${arsInUsd.toFixed(2)}% medido en USD frente al +${usdInUsd.toFixed(2)}% TEA en dólares que asegura ${bUsd.symbol} (+${gap.toFixed(2)} pp a favor del bono en dólares).`;
+    desc.innerText =
+      `${reasonText} Para que ${bArs.symbol} pudiera empatar a ${bUsd.symbol}, tanto la inflación como la devaluación anual deberían ubicarse por debajo de ${breakevenRate.toFixed(1)}% anual.`;
   }
 
-  qaTrace('Escenarios', `${bArs.symbol} (ARS) vs ${bUsd.symbol} (USD) a ${yrs} años`, {
+  qaTrace('Comparación de Bonos', `${bArs.symbol} (ARS) vs ${bUsd.symbol} (USD) a ${yrs} años`, {
     '1. Dato crudo (backend)': {
-      ARS: { symbol: bArs.symbol, 'tir_tea (%)': bArs.tir_tea, base: yieldBasis(bArs), es_CER: bArs.is_cer },
-      USD: { symbol: bUsd.symbol, 'tir_tea (%)': bUsd.tir_tea }
+      ARS: { symbol: bArs.symbol, 'tir_tea (%)': bArs.tir_tea, tipo: bArs.type },
+      USD: { symbol: bUsd.symbol, 'tir_tea (%)': bUsd.tir_tea, tipo: bUsd.type }
     },
     '2. Expectativas del usuario -> TEA': {
-      inflacion: `${inf.raw}% ${inf.unit} -> ${round4(inf.tea)}% TEA`,
-      devaluacion: `${dev.raw}% ${dev.unit} -> ${round4(dev.tea)}% TEA`
+      inflacion_pesos: `${inf.raw}% ${inf.unit} -> ${round4(inf.tea)}% TEA`,
+      devaluacion_dolar: `${dev.raw}% ${dev.unit} -> ${round4(dev.tea)}% TEA`,
+      erosion_efectiva_max: `${round4(macroErosionArs)}% TEA`
     },
-    '3. Tasa base usada en el horizonte': { ARS: `${round4(baseArs.tea)}% · ${baseArs.source}`, USD: `${round4(baseUsd.tea)}% · ${baseUsd.source}` },
-    '4. Pata ARS (TEA %)': { nominal: round4(arsNominal), 'real = (1+nominal)/(1+inflación)-1': round4(arsReal), 'en USD = (1+nominal)/(1+devaluación)-1': round4(arsInUsd) },
-    '5. Pata USD (TEA %)': { 'en USD': round4(usdInUsd), 'nominal ARS = (1+usd)(1+devaluación)-1': round4(usdNominalArs), 'real ARS': round4(usdRealArs) },
-    '6. Veredicto': { ganador: arsWins ? bArs.symbol : bUsd.symbol, diferencia_pp_en_USD: round4(gap), devaluacion_de_empate_pct: round4(breakevenDev) }
+    '3. Tasa base en el horizonte': { ARS: `${round4(baseArs.tea)}% · ${baseArs.source}`, USD: `${round4(baseUsd.tea)}% · ${baseUsd.source}` },
+    '4. Pata ARS (TEA %)': {
+      nominal: round4(arsNominal),
+      'real_vs_inflacion = (1+nom)/(1+inf)-1': round4(arsReal),
+      'en_USD_vs_deval = (1+nom)/(1+dev)-1': round4(arsInUsd),
+      'efectivo_neto = min(real, en_USD)': round4(arsEffective)
+    },
+    '5. Pata USD (TEA %)': {
+      'en_USD_hard_dollar': round4(usdInUsd),
+      'nominal_ARS = (1+usd)(1+dev)-1': round4(usdNominalArs),
+      'poder_adquisitivo_real': round4(usdReal)
+    },
+    '6. Veredicto': {
+      ganador: arsWins ? bArs.symbol : bUsd.symbol,
+      ventaja_neta_pp: round4(gap),
+      tasa_limite_empate_pct: round4(breakevenRate)
+    }
   });
 }
