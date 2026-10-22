@@ -5,6 +5,7 @@ Integrates:
   2. Valoracion de Acciones & DCF (Equity Valuation & Monte Carlo)
   3. FAMA-FRENCH Institutional Terminal (Multi-Factor Asset Pricing & Backtesting)
   4. QUANT BSM Terminal (Commodities & Options Analytics)
+  5. Teoría de Juegos / GameTheory Studio (Strategic Interaction & Nash Equilibria)
 """
 
 import sys
@@ -407,13 +408,21 @@ def bsm_get_historical_series(payload: Dict[str, Any] = Body(...)):
 # Shared resources (Navbar, banners)
 app.mount("/shared", StaticFiles(directory=str(BASE_DIR / "portal")), name="shared")
 
-# React bundle assets for Valoracion
-app.mount("/assets", StaticFiles(directory=str(BASE_DIR / "apps" / "valoracion" / "dist" / "assets")), name="assets")
-
 # Dedicated Frontends
 app.mount("/bonos", StaticFiles(directory=str(BASE_DIR / "apps" / "bonos" / "web"), html=True), name="bonos")
 app.mount("/fama", StaticFiles(directory=str(BASE_DIR / "apps" / "fama" / "gui"), html=True), name="fama")
 app.mount("/bsm", StaticFiles(directory=str(BASE_DIR / "apps" / "bsm" / "frontend"), html=True), name="bsm")
+
+# Global assets handler (supports both Valoracion and Teoria de Juegos React bundles)
+@app.get("/assets/{full_path:path}")
+def serve_global_assets(full_path: str):
+    fpath_val = BASE_DIR / "apps" / "valoracion" / "dist" / "assets" / full_path
+    if fpath_val.is_file():
+        return FileResponse(fpath_val)
+    fpath_juegos = BASE_DIR / "apps" / "juegos" / "dist" / "assets" / full_path
+    if fpath_juegos.is_file():
+        return FileResponse(fpath_juegos)
+    raise HTTPException(status_code=404, detail="Asset not found")
 
 @app.get("/valoracion")
 @app.get("/valoracion/")
@@ -426,6 +435,28 @@ def serve_valoracion_catchall(full_path: str):
     if fpath.is_file():
         return FileResponse(fpath)
     return FileResponse(BASE_DIR / "apps" / "valoracion" / "dist" / "index.html")
+
+# 5. Teoria de Juegos (GameTheory Studio / APPs)
+@app.get("/juegos")
+@app.get("/juegos/")
+@app.get("/apps")
+@app.get("/apps/")
+def serve_juegos_index():
+    return FileResponse(BASE_DIR / "apps" / "juegos" / "dist" / "index.html")
+
+@app.get("/juegos/{full_path:path}")
+def serve_juegos_catchall(full_path: str):
+    fpath = BASE_DIR / "apps" / "juegos" / "dist" / full_path
+    if fpath.is_file():
+        return FileResponse(fpath)
+    return FileResponse(BASE_DIR / "apps" / "juegos" / "dist" / "index.html")
+
+@app.get("/apps/{full_path:path}")
+def serve_apps_catchall(full_path: str):
+    fpath = BASE_DIR / "apps" / "juegos" / "dist" / full_path
+    if fpath.is_file():
+        return FileResponse(fpath)
+    return FileResponse(BASE_DIR / "apps" / "juegos" / "dist" / "index.html")
 
 # Root landing hub
 @app.get("/")
@@ -443,5 +474,6 @@ if __name__ == "__main__":
     print(f"   - Valoracion Acciones: http://localhost:{port}/valoracion/")
     print(f"   - FAMA-FRENCH: http://localhost:{port}/fama/")
     print(f"   - Black-Scholes BSM: http://localhost:{port}/bsm/")
+    print(f"   - Teoría de Juegos: http://localhost:{port}/juegos/")
     print(f"=======================================================\n")
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
