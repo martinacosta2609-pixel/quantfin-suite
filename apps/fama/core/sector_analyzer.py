@@ -229,7 +229,7 @@ KE_SELL_LOW = 0.10
 class SectorAnalyzer:
     def __init__(self, data_fetcher: DataFetcher):
         self.fetcher = data_fetcher
-        self.cache = TTLCache(SECTOR_CACHE_TTL, maxsize=64)
+        self.cache = TTLCache(SECTOR_CACHE_TTL, maxsize=32)
 
     def get_all_sectors_metadata(self) -> List[Dict[str, Any]]:
         return [
@@ -268,7 +268,7 @@ class SectorAnalyzer:
         with ThreadPoolExecutor(max_workers=1) as pool:
             snapshot_future = pool.submit(self.fetcher.get_valuation_snapshot, tickers_list)
             try:
-                download_df = yf.download(tickers_list, period=period, auto_adjust=True, progress=False)
+                download_df = yf.download(tickers_list, period=period, auto_adjust=True, progress=False, threads=False)
                 if download_df.empty or "Close" not in download_df:
                     raise ValueError("No se pudieron descargar los datos del sector.")
                 closes = download_df["Close"]

@@ -62,8 +62,7 @@ async def lifespan(_: FastAPI):
             backfill_revenue_ps()
     except Exception as exc:  # never block startup on a data migration
         print(f"[WARN] backfill revenue_ps: {exc}")
-    threading.Thread(target=_warm_up_econometrics, daemon=True).start()
-    start_background_market_sync(interval_seconds=30.0)
+    start_background_market_sync(interval_seconds=300.0)
     yield
 
 
@@ -109,7 +108,7 @@ def _cached_json(request: Request, key: Any, builder: Callable[[], Any], data_de
         etag = 'W/"' + hashlib.sha1(body).hexdigest()[:20] + '"'
         entry = (version, etag, body)
         with _response_lock:
-            if len(_response_cache) > 600:  # bound memory: drop everything, entries are cheap to rebuild
+            if len(_response_cache) > 120:  # bound memory: drop everything, entries are cheap to rebuild
                 _response_cache.clear()
             _response_cache[key] = entry
 

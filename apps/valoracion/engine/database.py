@@ -45,7 +45,7 @@ def get_db_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA cache_size = -16000")  # 16 MB page cache
+    conn.execute("PRAGMA cache_size = -4000")  # 4 MB page cache (bounded for 512 MB cloud containers)
     return conn
 
 

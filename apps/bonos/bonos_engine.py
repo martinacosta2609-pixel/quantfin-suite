@@ -5,8 +5,66 @@ Macaulay Duration, and Modified Duration.
 """
 from datetime import date, datetime
 import numpy as np
-from scipy.optimize import brentq
 from bond_db import get_bond_definition, get_base_ticker
+
+
+def brentq(f, a: float, b: float, xtol: float = 1e-6, maxiter: int = 100) -> float:
+    """Fast pure-Python root finder on [a, b] (avoids loading 50 MB of scipy.optimize at boot)."""
+    fa = float(f(a))
+    fb = float(f(b))
+    if abs(fa) <= xtol:
+        return a
+    if abs(fb) <= xtol:
+        return b
+    if fa * fb > 0:
+        raise ValueError("Root not bracketed in [a, b]")
+
+    c, fc = a, fa
+    d = e = b - a
+    for _ in range(maxiter):
+        if fb * fc > 0:
+            c, fc = a, fa
+            d = e = b - a
+        if abs(fc) < abs(fb):
+            a, b, c = b, c, b
+            fa, fb, fc = fb, fc, fb
+
+        tol1 = 2.0 * 2.220446049250313e-16 * abs(b) + 0.5 * xtol
+        xm = 0.5 * (c - b)
+        if abs(xm) <= tol1 or abs(fb) <= 1e-12:
+            return b
+
+        if abs(e) >= tol1 and abs(fa) > abs(fb):
+            s = fb / fa
+            if a == c:
+                p = 2.0 * xm * s
+                q = 1.0 - s
+            else:
+                q = fa / fc
+                r = fb / fc
+                p = s * (2.0 * xm * q * (q - r) - (b - a) * (r - 1.0))
+                q = (q - 1.0) * (r - 1.0) * (s - 1.0)
+            if p > 0:
+                q = -q
+            p = abs(p)
+            if 2.0 * p < min(3.0 * xm * q - abs(tol1 * q), abs(e * q)):
+                e = d
+                d = p / q
+            else:
+                d = xm
+                e = d
+        else:
+            d = xm
+            e = d
+
+        a, fa = b, fb
+        if abs(d) > tol1:
+            b += d
+        else:
+            b += tol1 if xm > 0 else -tol1
+        fb = float(f(b))
+    return b
+
 
 class BondEngine:
     def __init__(self):

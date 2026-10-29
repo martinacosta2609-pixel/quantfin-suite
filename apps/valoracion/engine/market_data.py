@@ -10,6 +10,7 @@ USD millions; per-share figures and prices are in USD.
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+import gc
 import json
 import math
 import threading
@@ -29,8 +30,9 @@ from engine.database import (
 )
 
 MILLION = 1e6
-SECTOR_SYNC_TTL = 25.0  # seconds between automatic batch refreshes per sector
-MARKET_OVERVIEW_TTL = 25.0  # seconds between automatic index refreshes
+SECTOR_SYNC_TTL = 120.0  # seconds between automatic batch refreshes per sector
+FORCE_SYNC_COOLDOWN = 60.0  # minimum cooldown even when force=True (multi-user DoS protection)
+MARKET_OVERVIEW_TTL = 60.0  # seconds between automatic index refreshes
 HISTORY_SYNC_TTL = 3600.0  # 1 hour cache for 5Y monthly econometric series
 
 # Official SPDR Sector ETFs for each GICS sector
@@ -146,12 +148,14 @@ def get_market_overview(force: bool = False) -> Dict[str, Any]:
     Cached for 25 seconds unless `force=True`.
     """
     now = time.time()
-    if not force and (now - _market_overview_cache["timestamp"]) < MARKET_OVERVIEW_TTL:
+    elapsed = now - _market_overview_cache["timestamp"]
+    if elapsed < (FORCE_SYNC_COOLDOWN if force else MARKET_OVERVIEW_TTL):
         return _market_overview_cache["data"]
 
     with _market_overview_lock:
         now = time.time()
-        if not force and (now - _market_overview_cache["timestamp"]) < MARKET_OVERVIEW_TTL:
+        elapsed = now - _market_overview_cache["timestamp"]
+        if elapsed < (FORCE_SYNC_COOLDOWN if force else MARKET_OVERVIEW_TTL):
             return _market_overview_cache["data"]
 
         symbols = ["^GSPC", "^IXIC", "^TNX", "^VIX"]
@@ -170,7 +174,7 @@ def get_market_overview(force: bool = False) -> Dict[str, Any]:
                 interval="1d",
                 auto_adjust=True,
                 progress=False,
-                threads=True,
+                threads=False,
             )
             if df is not None and not df.empty and "Close" in df:
                 close_df = df["Close"]
@@ -464,13 +468,14 @@ def refresh_sector_stocks(sector_name: str, force: bool = False) -> Dict[str, An
     mark_active_sector(key)
 
     now = time.time()
-    if not force and (now - _sector_sync_times.get(key, 0.0)) < SECTOR_SYNC_TTL:
+    min_ttl = FORCE_SYNC_COOLDOWN if force else SECTOR_SYNC_TTL
+    if (now - _sector_sync_times.get(key, 0.0)) < min_ttl:
         return {"success": True, "source": "cache", "sector": key, "updated_count": 0}
 
     lock = _get_sector_lock(key)
     with lock:
         now = time.time()
-        if not force and (now - _sector_sync_times.get(key, 0.0)) < SECTOR_SYNC_TTL:
+        if (now - _sector_sync_times.get(key, 0.0)) < min_ttl:
             return {"success": True, "source": "cache", "sector": key, "updated_count": 0}
 
         with get_db_connection() as conn:
@@ -486,7 +491,7 @@ def refresh_sector_stocks(sector_name: str, force: bool = False) -> Dict[str, An
         try:
             import yfinance as yf
 
-            # Download in chunks of up to 100 tickers for reliability
+            # Download in chunks of up to 100 tickers (single-threaded per chunk to bound RAM)
             live_prices: Dict[str, float] = {}
             chunk_size = 100
             for i in range(0, len(tickers), chunk_size):
@@ -497,7 +502,7 @@ def refresh_sector_stocks(sector_name: str, force: bool = False) -> Dict[str, An
                     interval="1d",
                     auto_adjust=True,
                     progress=False,
-                    threads=True,
+                    threads=False,
                 )
                 live_prices.update(_extract_close_prices(df, chunk))
 
@@ -514,7 +519,9 @@ def refresh_sector_stocks(sector_name: str, force: bool = False) -> Dict[str, An
                 if not new_price or new_price <= 0:
                     continue
                 old_price = _finite(r.get("market_price")) or 0.0
-                if not force and abs(new_price - old_price) < 0.005 and r.get("mc_p50") is not None:
+                # Si el precio es identico (ej. mercado cerrado) y ya existe MC en la base,
+                # la semilla deterministica daria exactamente el mismo resultado: no recalcular.
+                if abs(new_price - old_price) < 0.005 and r.get("mc_p50") is not None:
                     continue
 
                 shares = _finite(r.get("shares_outstanding")) or 100.0
@@ -548,25 +555,28 @@ def refresh_sector_stocks(sector_name: str, force: bool = False) -> Dict[str, An
                 p10 = r.get("mc_p10")
                 p50 = r.get("mc_p50")
                 p90 = r.get("mc_p90")
-                try:
-                    mc_res = run_monte_carlo_simulation(
-                        p0=new_price,
-                        current_revenue_ps=revenue_ps,
-                        historical_growth_mean=_first(_finite(r.get("rev_growth_mean")), 0.08),
-                        historical_growth_std=_first(_finite(r.get("rev_growth_std")), 0.05),
-                        historical_margin_mean=_first(_finite(r.get("margin_mean")), 0.20),
-                        historical_margin_std=_first(_finite(r.get("margin_std")), 0.03),
-                        tax_rate=tax_rate,
-                        reinvestment_rate_mean=_first(_finite(r.get("reinvestment_rate_mean")), 0.35),
-                        num_simulations=5000,
-                        random_seed=stable_seed(sym),
-                    )
-                    p10 = mc_res["percentiles"]["p10"]
-                    p50 = mc_res["percentiles"]["p50"]
-                    p90 = mc_res["percentiles"]["p90"]
-                    mc_updates.append((sym, json.dumps(mc_res)))
-                except SimulationError:
-                    pass
+                rel_price_change = abs(new_price - old_price) / old_price if old_price > 0 else 1.0
+                # Solo re-ejecutar las 5,000 trayectorias de Monte Carlo si el precio vario >= 0.25% o falta MC
+                if p50 is None or rel_price_change >= 0.0025:
+                    try:
+                        mc_res = run_monte_carlo_simulation(
+                            p0=new_price,
+                            current_revenue_ps=revenue_ps,
+                            historical_growth_mean=_first(_finite(r.get("rev_growth_mean")), 0.08),
+                            historical_growth_std=_first(_finite(r.get("rev_growth_std")), 0.05),
+                            historical_margin_mean=_first(_finite(r.get("margin_mean")), 0.20),
+                            historical_margin_std=_first(_finite(r.get("margin_std")), 0.03),
+                            tax_rate=tax_rate,
+                            reinvestment_rate_mean=_first(_finite(r.get("reinvestment_rate_mean")), 0.35),
+                            num_simulations=5000,
+                            random_seed=stable_seed(sym),
+                        )
+                        p10 = mc_res["percentiles"]["p10"]
+                        p50 = mc_res["percentiles"]["p50"]
+                        p90 = mc_res["percentiles"]["p90"]
+                        mc_updates.append((sym, json.dumps(mc_res)))
+                    except SimulationError:
+                        pass
 
                 stock_updates.append((
                     new_price,
@@ -804,10 +814,11 @@ def sync_all_stocks_live(max_workers: int = 16) -> Dict[str, Any]:
     return {"updated": len(stock_records), "total": len(tickers)}
 
 
-def start_background_market_sync(interval_seconds: float = 30.0) -> None:
+def start_background_market_sync(interval_seconds: float = 300.0) -> None:
     """
-    Starts a daemon thread that refreshes market indices and the currently active GICS sector
-    every `interval_seconds` (30s default), plus rotates through all sectors in the background.
+    Starts a lightweight daemon thread that refreshes market indices and the currently active GICS sector
+    every `interval_seconds` (300s default), plus rotates through sectors gently without forcing Monte Carlo
+    when prices have not moved.
     """
     global _bg_thread_started
     if _bg_thread_started:
@@ -819,29 +830,31 @@ def start_background_market_sync(interval_seconds: float = 30.0) -> None:
     def _loop() -> None:
         rotation_idx = 0
         # Initial warmup right after server boot
-        time.sleep(1.5)
+        time.sleep(2.5)
         try:
-            get_market_overview(force=True)
+            get_market_overview(force=False)
             with _active_sector_lock:
                 current_sec = _active_sector
             refresh_sector_stocks(current_sec, force=False)
+            gc.collect()
         except Exception as exc:
             print(f"[WARN] initial background sync: {exc}")
 
         while True:
             time.sleep(interval_seconds)
             try:
-                get_market_overview(force=True)
+                get_market_overview(force=False)
                 with _active_sector_lock:
                     current_sec = _active_sector
-                refresh_sector_stocks(current_sec, force=True)
+                refresh_sector_stocks(current_sec, force=False)
 
                 # Also refresh one background sector per cycle so all 11 sectors stay warm
                 bg_sec = all_sectors[rotation_idx % len(all_sectors)]
                 rotation_idx += 1
                 if bg_sec != current_sec:
                     refresh_sector_stocks(bg_sec, force=False)
+                gc.collect()
             except Exception as exc:
                 print(f"[WARN] background sync loop: {exc}")
 
-    threading.Thread(target=_loop, daemon=True, name="market-sync-30s").start()
+    threading.Thread(target=_loop, daemon=True, name="market-sync-bg").start()

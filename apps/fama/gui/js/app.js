@@ -312,6 +312,7 @@ async function runBacktest() {
   const trainWindow = parseInt(document.getElementById('btTrainWindow').value, 10);
   const testHorizon = parseInt(document.getElementById('btTestHorizon').value, 10);
   const model = document.getElementById('modelSelect').value;
+  const period = document.getElementById('periodSelect').value;
 
   if (!cutoffDate) {
     showToast('Selecciona una fecha de corte histórica.', 'warning');
@@ -321,7 +322,7 @@ async function runBacktest() {
   showLoader('Ejecutando Backtest Fuera de Muestra', `Calibrando Fama-French hasta ${cutoffDate} y evaluando contra datos históricos reales...`);
 
   try {
-    const btResult = await api.run_backtest(cutoffDate, trainWindow, testHorizon, model);
+    const btResult = await api.run_backtest(cutoffDate, trainWindow, testHorizon, model, currentTicker, period);
     if (btResult.error) {
       showToast(`Error en backtest: ${btResult.error}`);
       return;

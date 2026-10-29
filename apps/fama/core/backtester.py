@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
 from typing import Dict, Any, List
 from core.econometrics import EconometricDiagnostics
 
@@ -80,11 +79,11 @@ class FamaFrenchBacktester:
         test_df["Pred_Price"] = p0 * (1.0 + test_df["Pred_Return"]).cumprod()
         test_df["Actual_Price"] = test_df["Close"]
 
-        # Confidence Cone along horizon (95% CI: 1.96 * SE * sqrt(t))
+        # Confidence Cone along horizon (Log-normal 95% CI: Pred_Price * exp(+-1.96 * SE * sqrt(t)))
         t_steps = np.arange(1, len(test_df) + 1)
-        ci_margins = 1.96 * resid_std * np.sqrt(t_steps) * p0
-        test_df["CI_Upper"] = test_df["Pred_Price"] + ci_margins
-        test_df["CI_Lower"] = np.maximum(0.01, test_df["Pred_Price"] - ci_margins)
+        log_band = 1.96 * resid_std * np.sqrt(t_steps)
+        test_df["CI_Upper"] = test_df["Pred_Price"] * np.exp(log_band)
+        test_df["CI_Lower"] = test_df["Pred_Price"] * np.exp(-log_band)
 
         # 3. Econometric Estimation Error Metrics
         test_df["Error_Dollar"] = test_df["Pred_Price"] - test_df["Actual_Price"]

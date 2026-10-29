@@ -20,7 +20,7 @@
                     });
                     return await res.json();
                 },
-                run_backtest: async function(cutoffDate, trainWindow, testHorizon, model) {
+                run_backtest: async function(cutoffDate, trainWindow, testHorizon, model, ticker, period) {
                     const res = await fetch('/api/fama/run_backtest', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -28,7 +28,9 @@
                             cutoff_date: cutoffDate,
                             train_window_days: trainWindow,
                             test_horizon_days: testHorizon,
-                            model_type: model
+                            model_type: model,
+                            ticker: ticker,
+                            period: period
                         })
                     });
                     return await res.json();

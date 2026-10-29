@@ -252,11 +252,12 @@ function updateSortIcons() {
 function startAutoRefresh() {
   if (refreshInterval) clearInterval(refreshInterval);
   refreshInterval = setInterval(() => {
+    if (document.hidden) return;
     refreshCountdown--;
     const timerEl = document.getElementById('refreshTimer');
     if (timerEl) timerEl.innerText = `${refreshCountdown}s`;
     if (refreshCountdown <= 0) {
-      refreshCountdown = 30;
+      refreshCountdown = 45;
       loadData(false);
     }
   }, 1000);

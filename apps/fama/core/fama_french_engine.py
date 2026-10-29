@@ -73,19 +73,19 @@ class FamaFrenchEngine:
             y, X, cov_type=cov_type, hac_maxlags=hac_lags, diagnostics=diagnostics
         )
 
-        # Calculate annualized factor statistics and risk premia
+        # Calculate annualized factor statistics and risk premia (geometric compounding consistent with alpha & valuation)
         annual_factor_returns = {}
         for f in available_factors:
             mean_daily = float(aligned_df[f].mean())
             std_daily = float(aligned_df[f].std())
             annual_factor_returns[f] = {
-                "mean_annual": mean_daily * 252.0,
+                "mean_annual": (1.0 + mean_daily) ** 252.0 - 1.0,
                 "vol_annual": std_daily * np.sqrt(252.0)
             }
 
-        # Daily and Annualized Risk-free rate
+        # Daily and Annualized Risk-free rate (geometric EAR)
         rf_daily_mean = float(aligned_df["RF"].mean())
-        rf_annual = rf_daily_mean * 252.0
+        rf_annual = (1.0 + rf_daily_mean) ** 252.0 - 1.0
 
         # Calculate Expected Return (Cost of Equity: k_e)
         # E[R_i] = Rf + sum(beta_k * E[F_k])

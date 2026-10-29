@@ -9,12 +9,18 @@ nucleo de calculo (_core) y solo difieren en el q efectivo y en la definicion de
 
 import math
 import numpy as np
-from scipy.special import ndtr
-from scipy.optimize import brentq
 from typing import Dict, Any, Optional
 
 _INV_SQRT_2PI = 1.0 / math.sqrt(2.0 * math.pi)
+_INV_SQRT_2 = 1.0 / math.sqrt(2.0)
 _EPS = 1e-7
+
+
+def _ndtr(x):
+    """CDF normal estandar exacta via math.erf (0 MB de overhead de SciPy)."""
+    if isinstance(x, np.ndarray):
+        return np.fromiter((0.5 * (1.0 + math.erf(float(v) * _INV_SQRT_2)) for v in x), dtype=float, count=x.size).reshape(x.shape)
+    return 0.5 * (1.0 + math.erf(float(x) * _INV_SQRT_2))
 
 
 def _pdf(x):
@@ -54,9 +60,9 @@ class QuantEngine:
 
         d1, d2 = cls._d1_d2(S, K, T, r, sigma, q)
         if is_call:
-            price = S * disc_q * ndtr(d1) - K * disc_r * ndtr(d2)
+            price = S * disc_q * _ndtr(d1) - K * disc_r * _ndtr(d2)
         else:
-            price = K * disc_r * ndtr(-d2) - S * disc_q * ndtr(-d1)
+            price = K * disc_r * _ndtr(-d2) - S * disc_q * _ndtr(-d1)
         return np.maximum(0.0, price)
 
     # --------------------------------------------------------------- precios
@@ -152,7 +158,7 @@ class QuantEngine:
         disc_r = math.exp(-r * T)
         disc_q = math.exp(-q_eff * T)
         pdf_d1 = float(_pdf(d1))
-        n_d1, n_d2 = float(ndtr(d1)), float(ndtr(d2))
+        n_d1, n_d2 = float(_ndtr(d1)), float(_ndtr(d2))
         n_md1, n_md2 = 1.0 - n_d1, 1.0 - n_d2
 
         delta = disc_q * n_d1 if is_call else -disc_q * n_md1
@@ -235,11 +241,24 @@ class QuantEngine:
             if sigma <= 0.001 or sigma > 8.0:
                 break
 
-        # Intento 2: Brentq (convergencia garantizada si hay cambio de signo en [0.1%, 500%])
+        # Intento 2: Biseccion acotada (convergencia garantizada si hay cambio de signo en [0.1%, 500%])
         try:
             low, high = 0.001, 5.0
-            if objective(low) * objective(high) < 0:
-                return float(brentq(objective, low, high, xtol=tol))
+            f_low = objective(low)
+            f_high = objective(high)
+            if f_low * f_high < 0:
+                for _ in range(45):
+                    mid = 0.5 * (low + high)
+                    f_mid = objective(mid)
+                    if abs(f_mid) < tol or (high - low) < tol:
+                        return float(mid)
+                    if f_low * f_mid < 0:
+                        high = mid
+                        f_high = f_mid
+                    else:
+                        low = mid
+                        f_low = f_mid
+                return float(0.5 * (low + high))
         except Exception:
             pass
 
@@ -334,7 +353,7 @@ class QuantEngine:
         time_val = max(0.0, theoretical_price - intrinsic_val)
 
         # Probabilidad neutral al riesgo de finalizar ITM
-        prob_itm = float(ndtr(d2) if is_call else ndtr(-d2)) * 100.0
+        prob_itm = float(_ndtr(d2) if is_call else _ndtr(-d2)) * 100.0
 
         # Comparacion con precio de mercado observado
         has_market = market_price is not None and market_price > 0.001
@@ -413,7 +432,7 @@ class QuantEngine:
         diff_pct = (diff / theoretical_price * 100.0) if theoretical_price > 0.001 else 0.0
 
         vol_spread = (iv - hv) if (iv is not None) else 0.0
-        prob_itm = float(ndtr(d2) if is_call else ndtr(-d2)) * 100.0
+        prob_itm = float(_ndtr(d2) if is_call else _ndtr(-d2)) * 100.0
 
         if not has_market:
             action = f"PRIMA JUSTA {option_type.upper()}"

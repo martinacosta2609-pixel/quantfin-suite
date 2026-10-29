@@ -38,17 +38,7 @@ sys.path.insert(0, str(BASE_DIR / "apps" / "valoracion"))
 # 1. Bonos
 from data_feed import MarketDataFeed
 
-# 2. Fama-French
-from core.data_fetcher import DataFetcher
-from core.fama_french_engine import FamaFrenchEngine
-from core.valuation import ValuationEngine
-from core.backtester import FamaFrenchBacktester
-from core.sector_analyzer import SectorAnalyzer
-
-# 3. BSM
-from backend.bridge import ApiBridge
-
-# 4. Valoracion de Acciones
+# 4. Valoracion de Acciones (Fama-French y BSM se cargan bajo demanda / lazy-loading para ahorrar RAM)
 from engine.database import init_db, has_missing_revenue_ps
 # Los endpoints de Valoracion viven en engine/api.py (cache ETag/304, validacion de entradas,
 # semilla estable por ticker): aqui solo se registran sus funciones, sin duplicar la logica.
@@ -59,20 +49,53 @@ import engine.api as valoracion_api
 bonos_feed = MarketDataFeed()
 cached_bonos_payload = {"bonds": [], "macro": {}}
 
-bsm_bridge = ApiBridge()
+_bsm_bridge = None
+_bsm_lock = threading.Lock()
+
+
+def get_bsm_bridge():
+    global _bsm_bridge
+    if _bsm_bridge is None:
+        with _bsm_lock:
+            if _bsm_bridge is None:
+                from backend.bridge import ApiBridge
+                _bsm_bridge = ApiBridge()
+    return _bsm_bridge
+
 
 class FamaController:
-    """Mismo contrato que FamaFrenchAppAPI (apps/fama/app.py), expuesto por HTTP en lugar de pywebview."""
+    """Mismo contrato que FamaFrenchAppAPI (apps/fama/app.py), expuesto por HTTP con aislamiento multi-usuario."""
 
     def __init__(self):
-        self.fetcher = DataFetcher()
-        self.sector_analyzer = SectorAnalyzer(self.fetcher)
+        self._fetcher = None
+        self._sector_analyzer = None
+        self._aligned_cache = None
         self.ff_factors_df = None
         self.current_aligned_df = None
         self._state_lock = threading.Lock()
 
+    def _ensure_init(self):
+        if self._fetcher is None:
+            with self._state_lock:
+                if self._fetcher is None:
+                    from core.cache import TTLCache
+                    from core.data_fetcher import DataFetcher
+                    from core.sector_analyzer import SectorAnalyzer
+                    self._fetcher = DataFetcher()
+                    self._sector_analyzer = SectorAnalyzer(self._fetcher)
+                    self._aligned_cache = TTLCache(600, maxsize=20)
+
+    @property
+    def fetcher(self):
+        self._ensure_init()
+        return self._fetcher
+
+    @property
+    def sector_analyzer(self):
+        self._ensure_init()
+        return self._sector_analyzer
+
     def ensure_factors(self, force_refresh: bool = False):
-        # El fetcher cachea en disco y serializa la descarga: es barato llamarlo en cada request.
         self.ff_factors_df = self.fetcher.get_fama_french_factors(force_refresh=force_refresh)
         return self.ff_factors_df
 
@@ -87,6 +110,9 @@ class FamaController:
         return {"success": True, **self.fetcher.factors_status(df)}
 
     def analyze_stock(self, ticker: str, model_type: str = "FF5", period: str = "3y"):
+        from core.fama_french_engine import FamaFrenchEngine
+        from core.valuation import ValuationEngine
+
         ticker_clean = ticker.strip().upper()
         factors_df = self.ensure_factors()
 
@@ -114,6 +140,8 @@ class FamaController:
         raw_resids = estimation_res["econometrics"].pop("raw_residuals", None)
         estimation_res["econometrics"].pop("raw_fitted", None)
 
+        self._ensure_init()
+        self._aligned_cache.set((ticker_clean, period), aligned)
         with self._state_lock:
             self.current_aligned_df = aligned
 
@@ -130,9 +158,35 @@ class FamaController:
             "valuation": valuation_res
         }
 
-    def run_backtest(self, cutoff_date: str, train_window_days: int = 252, test_horizon_days: int = 63, model_type: str = "FF5"):
-        with self._state_lock:
-            aligned = self.current_aligned_df
+    def run_backtest(
+        self,
+        cutoff_date: str,
+        train_window_days: int = 252,
+        test_horizon_days: int = 63,
+        model_type: str = "FF5",
+        ticker: Optional[str] = None,
+        period: str = "3y",
+    ):
+        from core.fama_french_engine import FamaFrenchEngine
+        from core.backtester import FamaFrenchBacktester
+
+        self._ensure_init()
+        train_w = max(30, min(2520, int(train_window_days)))
+        test_h = max(5, min(504, int(test_horizon_days)))
+
+        aligned = None
+        if ticker and str(ticker).strip():
+            t_clean = str(ticker).strip().upper()
+            aligned = self._aligned_cache.get((t_clean, period))
+            if aligned is None:
+                stock_res = self.fetcher.get_stock_data(t_clean, period=period)
+                aligned = self.fetcher.align_stock_and_factors(stock_res["history"], self.ensure_factors())
+                self._aligned_cache.set((t_clean, period), aligned)
+
+        if aligned is None:
+            with self._state_lock:
+                aligned = self.current_aligned_df
+
         if aligned is None or aligned.empty:
             return {"error": "Primero debes analizar un ticker antes de ejecutar el backtest."}
 
@@ -140,8 +194,8 @@ class FamaController:
         return FamaFrenchBacktester.run_backtest(
             aligned_df=aligned,
             cutoff_date=cutoff_date,
-            train_window_days=int(train_window_days),
-            test_horizon_days=int(test_horizon_days),
+            train_window_days=train_w,
+            test_horizon_days=test_h,
             factors=engine.factors,
             cov_type="HAC"
         )
@@ -176,11 +230,9 @@ async def lifespan(app: FastAPI):
             backfill_revenue_ps()
     except Exception as e:
         print("[AVISO] Error al inicializar DB:", e)
-    # statsmodels tarda ~1.5 s en importar y solo lo usa la pestaña de auditoria
-    threading.Thread(target=valoracion_api._warm_up_econometrics, daemon=True).start()
     try:
         from engine.market_data import start_background_market_sync
-        start_background_market_sync(interval_seconds=60.0)
+        start_background_market_sync(interval_seconds=300.0)
     except Exception as e:
         print("[AVISO] Error al iniciar market sync de Valoracion:", e)
 
@@ -356,7 +408,9 @@ def fama_run_backtest(payload: Dict[str, Any] = Body(...)):
         train_window = int(payload.get("train_window_days", 252))
         test_horizon = int(payload.get("test_horizon_days", 63))
         model = payload.get("model_type", "FF5")
-        return fama_ctrl.run_backtest(cutoff, train_window, test_horizon, model)
+        ticker = payload.get("ticker")
+        period = payload.get("period", "3y")
+        return fama_ctrl.run_backtest(cutoff, train_window, test_horizon, model, ticker=ticker, period=period)
     except Exception as e:
         return {"error": str(e)}
 
@@ -381,34 +435,34 @@ def fama_get_sp500_sectors():
 # ==================== 4. BSM (BLACK-SCHOLES) API ====================
 @app.get("/api/bsm/get_commodities")
 def bsm_get_commodities():
-    return bsm_bridge.get_commodities()
+    return get_bsm_bridge().get_commodities()
 
 @app.post("/api/bsm/get_quote")
 def bsm_get_quote(payload: Dict[str, Any] = Body(...)):
     comm_id = payload.get("comm_id", "gold")
-    return bsm_bridge.get_quote(comm_id)
+    return get_bsm_bridge().get_quote(comm_id)
 
 @app.post("/api/bsm/get_options_chain")
 def bsm_get_options_chain(payload: Dict[str, Any] = Body(...)):
     comm_id = payload.get("comm_id", "gold")
     expiry = payload.get("expiry")
-    return bsm_bridge.get_options_chain(comm_id, expiry)
+    return get_bsm_bridge().get_options_chain(comm_id, expiry)
 
 @app.post("/api/bsm/calculate_single_option")
 def bsm_calculate_single_option(payload: Dict[str, Any] = Body(...)):
     params = payload.get("params", payload)
-    return bsm_bridge.calculate_single_option(params)
+    return get_bsm_bridge().calculate_single_option(params)
 
 @app.post("/api/bsm/run_econometric_backtest")
 def bsm_run_econometric_backtest(payload: Dict[str, Any] = Body(...)):
     params = payload.get("params", payload)
-    return bsm_bridge.run_econometric_backtest(params)
+    return get_bsm_bridge().run_econometric_backtest(params)
 
 @app.post("/api/bsm/get_historical_series")
 def bsm_get_historical_series(payload: Dict[str, Any] = Body(...)):
     comm_id = payload.get("comm_id", "gold")
     period = payload.get("period", "1y")
-    return bsm_bridge.get_historical_series(comm_id, period)
+    return get_bsm_bridge().get_historical_series(comm_id, period)
 
 
 # ==================== STATIC & ROUTING ====================

@@ -10,7 +10,6 @@ Calculo riguroso de errores de estimacion de Black-Scholes-Merton y Black-76:
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm, jarque_bera, skew, kurtosis
 from typing import Dict, Any, List, Optional
 from backend.quant_engine import QuantEngine
 
@@ -263,18 +262,28 @@ class EconometricValidator:
                 "residuals": [round(float(e), 2) for e in errors]
             }
 
-        # Metricas econometricas
+        # Metricas econometricas (100% NumPy puro, 0 MB overhead de SciPy)
+        n_err = len(errors_arr)
         rmse = float(np.sqrt(np.mean(errors_arr ** 2)))
         mae = float(np.mean(np.abs(errors_arr)))
         mape = float(np.mean(np.abs(pct_errors))) if pct_errors else 0.0
         mean_bias = float(np.mean(errors_arr))  # Sesgo: si es negativo, BSM sobreestima el precio de la opcion!
 
-        # Asimetria y Curtosis
-        sk = float(skew(errors_arr))
-        kt = float(kurtosis(errors_arr, fisher=False))  # Pearson kurtosis (normal = 3)
+        # Asimetria y Curtosis (Pearson: normal = 3.0)
+        centered = errors_arr - mean_bias
+        m2 = float(np.mean(centered ** 2))
+        if m2 > 1e-12:
+            m3 = float(np.mean(centered ** 3))
+            m4 = float(np.mean(centered ** 4))
+            sk = m3 / (m2 ** 1.5)
+            kt = m4 / (m2 ** 2)
+        else:
+            sk = 0.0
+            kt = 3.0
 
-        # Test de Jarque-Bera
-        jb_stat, jb_pvalue = jarque_bera(errors_arr)
+        # Test de Jarque-Bera (JB ~ Chi2(2) => p-value exacto = exp(-JB / 2))
+        jb_stat = (n_err / 6.0) * (sk ** 2 + ((kt - 3.0) ** 2) / 4.0)
+        jb_pvalue = float(np.exp(-0.5 * max(0.0, jb_stat)))
 
         # Estadistico de Durbin-Watson para autocorrelacion de residuos
         diff_err = np.diff(errors_arr)
@@ -285,7 +294,13 @@ class EconometricValidator:
         bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
         # Densidad teorica normal para comparar colas pesadas
-        normal_curve = norm.pdf(bin_centers, loc=mean_bias, scale=np.std(errors_arr)) * len(errors_arr) * (bin_edges[1] - bin_edges[0])
+        std_err = float(np.std(errors_arr))
+        if std_err > 1e-9:
+            z = (bin_centers - mean_bias) / std_err
+            normal_pdf = np.exp(-0.5 * z * z) / (std_err * np.sqrt(2.0 * np.pi))
+            normal_curve = normal_pdf * n_err * (bin_edges[1] - bin_edges[0])
+        else:
+            normal_curve = np.zeros_like(bin_centers)
 
         return {
             "sample_points": len(errors_arr),

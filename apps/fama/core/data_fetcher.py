@@ -36,6 +36,13 @@ INFO_TTL = 30 * 60
 # ETFs usados para estimar los días que Kenneth French aún no publicó.
 PROXY_ETFS = ["SPY", "IWM", "IWN", "IWO", "MTUM", "QUAL"]
 FACTOR_COLUMNS = ["Mkt-RF", "SMB", "HML", "RMW", "CMA", "RF", "MOM"]
+FORCE_REFRESH_COOLDOWN = 120.0  # s - evita re-descargas masivas ante clics repetidos
+
+_WANTED_INFO_KEYS = (
+    "shortName", "longName", "sector", "industry", "currentPrice", "regularMarketPrice",
+    "marketCap", "trailingPE", "forwardPE", "dividendRate", "dividendYield",
+    "fiftyTwoWeekHigh", "fiftyTwoWeekLow", "currency", "exchange",
+)
 
 
 class DataFetcher:
@@ -43,9 +50,11 @@ class DataFetcher:
         self.cache_dir = cache_dir
         os.makedirs(self.cache_dir, exist_ok=True)
         self._factors_cache: Optional[pd.DataFrame] = None
+        self._factors_meta_cache: dict = {}
+        self._last_force_refresh_ts: float = 0.0
         self._factors_lock = threading.Lock()
-        self._stock_cache = TTLCache(STOCK_TTL, maxsize=64)
-        self._info_cache = TTLCache(INFO_TTL, maxsize=512)
+        self._stock_cache = TTLCache(STOCK_TTL, maxsize=24)
+        self._info_cache = TTLCache(INFO_TTL, maxsize=128)
 
     # ------------------------------------------------------------------ #
     # Factores de Kenneth French
@@ -138,13 +147,34 @@ class DataFetcher:
         """
         Devuelve factores diarios FF5 + Momentum. Los datos oficiales se cachean 7 días;
         los días recientes aún no publicados se re-estiman con ETFs cada 6 horas.
+        Sirve directamente desde RAM (`_factors_cache`) para evitar re-parsear el CSV en cada request.
         """
+        now = time.time()
+        if (
+            not force_refresh
+            and self._factors_cache is not None
+            and (now - self._factors_meta_cache.get("official_ts", 0)) < OFFICIAL_TTL
+            and (now - self._factors_meta_cache.get("proxy_ts", 0)) < PROXY_TTL
+        ):
+            return self._factors_cache
+
         with self._factors_lock:
             now = time.time()
-            cached = self._read_cached_factors()
+            if force_refresh and (now - self._last_force_refresh_ts) < FORCE_REFRESH_COOLDOWN and self._factors_cache is not None:
+                return self._factors_cache
+
+            if (
+                not force_refresh
+                and self._factors_cache is not None
+                and (now - self._factors_meta_cache.get("official_ts", 0)) < OFFICIAL_TTL
+                and (now - self._factors_meta_cache.get("proxy_ts", 0)) < PROXY_TTL
+            ):
+                return self._factors_cache
+
+            cached = self._factors_cache if self._factors_cache is not None else self._read_cached_factors()
             cache_file = os.path.join(self.cache_dir, FACTORS_FILE)
-            meta = self._read_meta()
-            if cached is not None and not meta:
+            meta = self._factors_meta_cache or self._read_meta()
+            if cached is not None and not meta and os.path.exists(cache_file):
                 mtime = os.path.getmtime(cache_file)
                 # Caché heredada: los datos oficiales valen, pero sus proxies eran aproximaciones viejas.
                 meta = {"official_ts": mtime, "proxy_ts": 0}
@@ -158,24 +188,31 @@ class DataFetcher:
             if official_fresh:
                 if now - meta.get("proxy_ts", 0) < PROXY_TTL:
                     self._factors_cache = cached
+                    self._factors_meta_cache = meta
                     return cached
                 official = cached[~cached["Is_Proxy"]].reset_index(drop=True)
                 df = self._append_recent_proxies(official)
                 meta["proxy_ts"] = now
                 self._write_factors(df, meta)
                 self._factors_cache = df
+                self._factors_meta_cache = meta
                 return df
 
             try:
                 official = self._download_official()
                 df = self._append_recent_proxies(official)
-                self._write_factors(df, {"official_ts": now, "proxy_ts": now})
+                meta = {"official_ts": now, "proxy_ts": now}
+                self._write_factors(df, meta)
                 self._factors_cache = df
+                self._factors_meta_cache = meta
+                if force_refresh:
+                    self._last_force_refresh_ts = now
                 return df
             except Exception as exc:
                 if cached is not None:
                     log.warning("Sin conexión con Dartmouth, se usa la caché local: %s", exc)
                     self._factors_cache = cached
+                    self._factors_meta_cache = meta or {"official_ts": now, "proxy_ts": now}
                     return cached
                 raise RuntimeError(f"Error descargando factores de Kenneth French: {exc}") from exc
 
@@ -203,7 +240,7 @@ class DataFetcher:
 
         try:
             start = (last_official - timedelta(days=7)).strftime("%Y-%m-%d")
-            raw = yf.download(PROXY_ETFS + ["^IRX"], start=start, progress=False, auto_adjust=True)
+            raw = yf.download(PROXY_ETFS + ["^IRX"], start=start, progress=False, auto_adjust=True, threads=False)
             if raw.empty or "Close" not in raw:
                 return official
 
@@ -291,9 +328,10 @@ class DataFetcher:
         cached = self._info_cache.get(ticker)
         if cached is not None:
             return cached
-        raw = yf.Ticker(ticker).info or {}
-        self._info_cache.set(ticker, raw)
-        return raw
+        full_info = yf.Ticker(ticker).info or {}
+        slim_info = {k: full_info[k] for k in _WANTED_INFO_KEYS if k in full_info}
+        self._info_cache.set(ticker, slim_info)
+        return slim_info
 
     def get_stock_data(self, ticker: str, start_date: str = None, end_date: str = None, period: str = "5y") -> dict:
         """Historial de precios + ficha de la compañía. Descarga ambos en paralelo y cachea 10 minutos."""
@@ -321,7 +359,7 @@ class DataFetcher:
         self._stock_cache.set(key, result)
         return result
 
-    def get_valuation_snapshot(self, symbols: Iterable[str], max_workers: int = 8) -> Dict[str, dict]:
+    def get_valuation_snapshot(self, symbols: Iterable[str], max_workers: int = 4) -> Dict[str, dict]:
         """P/E y dividend yield de varias acciones, consultados en paralelo."""
 
         def one(sym: str):

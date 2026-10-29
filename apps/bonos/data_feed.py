@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 
 import requests
+from requests.adapters import HTTPAdapter
 import urllib3
 
 try:
@@ -47,7 +48,8 @@ BYMA_ENDPOINTS = (
 PAGE_SIZE = 10000
 MAX_PAGES = 30
 
-QUOTES_TTL = 20          # s - BYMA delayed quotes
+QUOTES_TTL = 45          # s - BYMA delayed quotes
+FORCE_QUOTES_COOLDOWN = 20  # s - minimum cooldown even when force=True (DoS protection)
 MACRO_TTL = 600          # s - BCRA principales variables
 SLOW_TTL = 6 * 3600      # s - CER series and Lecap redemption values
 
@@ -109,6 +111,11 @@ class MarketDataFeed:
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"
         }
+        self._session = requests.Session()
+        self._session.headers.update(self.headers)
+        _adapter = HTTPAdapter(pool_connections=8, pool_maxsize=8)
+        self._session.mount("https://", _adapter)
+        self._session.mount("http://", _adapter)
         self._lock = threading.Lock()
         self._last_quotes_ts = 0.0
         self._last_macro_ts = 0.0
@@ -124,7 +131,7 @@ class MarketDataFeed:
     def fetch_bcra_indicators(self):
         """Fetches macro variables from official BCRA v4 API (values already in % / index level)."""
         try:
-            resp = requests.get(BCRA_BASE, params={"limit": 2000}, headers=self.headers, verify=False, timeout=8)
+            resp = self._session.get(BCRA_BASE, params={"limit": 2000}, verify=False, timeout=8)
             if resp.status_code == 200:
                 wanted = {
                     4: "dolar_oficial",            # TC minorista
@@ -154,7 +161,7 @@ class MarketDataFeed:
         """Daily CER around the settlement date, to apply the prospectus lag (t - 10 business days)."""
         try:
             params = {"desde": (settle - timedelta(days=30)).isoformat(), "hasta": settle.isoformat(), "limit": 100}
-            resp = requests.get(f"{BCRA_BASE}/30", params=params, headers=self.headers, verify=False, timeout=8)
+            resp = self._session.get(f"{BCRA_BASE}/30", params=params, verify=False, timeout=8)
             if resp.status_code == 200:
                 results = resp.json().get("results", [])
                 detalle = results[0].get("detalle", []) if results else []
@@ -184,7 +191,7 @@ class MarketDataFeed:
         is then recomputed here against BYMA's price.
         """
         try:
-            resp = requests.get(LETRAS_URL, headers=self.headers, timeout=10)
+            resp = self._session.get(LETRAS_URL, timeout=10)
             if resp.status_code != 200:
                 return
             table = {}
@@ -213,7 +220,7 @@ class MarketDataFeed:
         try:
             for page in range(1, MAX_PAGES + 1):
                 body = {"excludeZeroPxAndQty": False, "page_number": page, "page_size": PAGE_SIZE}
-                resp = requests.post(url, json=body, headers=self.headers, verify=False, timeout=25)
+                resp = self._session.post(url, json=body, verify=False, timeout=25)
                 if resp.status_code != 200:
                     self._errors.append(f"BYMA {endpoint}: HTTP {resp.status_code}")
                     break
@@ -320,7 +327,8 @@ class MarketDataFeed:
         """
         with self._lock:
             now = time.time()
-            if not force and self.cached_bonds and (now - self._last_quotes_ts) < QUOTES_TTL:
+            min_ttl = FORCE_QUOTES_COOLDOWN if force else QUOTES_TTL
+            if self.cached_bonds and (now - self._last_quotes_ts) < min_ttl:
                 return self.cached_bonds, self.macro_summary
             self._errors = []
             settle_date = date.today()

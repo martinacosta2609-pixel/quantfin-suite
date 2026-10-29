@@ -98,16 +98,17 @@ def run_monte_carlo_simulation(
     cf_matrix[:, 1:5] = fcf_paths[:, :4]
     cf_matrix[:, 5] = fcf_paths[:, 4] + np.maximum(fcf_paths[:, 4] * exit_multiples, 0.0)
 
-    # Newton-Raphson, vectorized across all paths
+    # Newton-Raphson, vectorized across all paths with step-damping and bounds for multiple sign-change stability
     r_est = np.full(num_simulations, 0.08)  # Initial guess: 8%
     years = np.arange(6)
     for _ in range(25):
-        denom = np.maximum(1.0 + r_est[:, None], 0.001)
+        denom = np.maximum(1.0 + r_est[:, None], 0.05)
         discounts = denom ** years
         npv = np.sum(cf_matrix / discounts, axis=1)
         d_npv = -np.sum((years * cf_matrix) / (discounts * denom), axis=1)
-        step = np.clip(npv / np.where(np.abs(d_npv) < 1e-7, 1e-7, d_npv), -0.15, 0.15)
-        r_est -= step
+        safe_d_npv = np.where(np.abs(d_npv) < 1e-6, np.where(d_npv >= 0, 1e-6, -1e-6), d_npv)
+        step = np.clip(npv / safe_d_npv, -0.12, 0.12)
+        r_est = np.clip(r_est - step, -0.60, 2.00)
         if np.max(np.abs(step)) < 1e-4:
             break
 
